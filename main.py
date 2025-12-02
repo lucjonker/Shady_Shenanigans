@@ -3,7 +3,6 @@ import torch.optim as optim
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 import torchvision.transforms as transforms
-from torchvision.datasets import ImageFolder
 
 import matplotlib.pyplot as plt
 import pandas as pd
