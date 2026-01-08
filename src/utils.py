@@ -3,6 +3,7 @@ import re
 
 import rasterio
 import pandas as pd
+from rasterio.crs import CRS
 from rasterio.warp import transform
 from datetime import datetime
 
@@ -16,7 +17,7 @@ def get_location(path):
         y_center = (src.bounds.bottom + src.bounds.top) / 2.0
 
         # reproject that point to EPSG:4326
-        lon, lat = transform(src.crs, "EPSG:4326", [x_center], [y_center])
+        lon, lat = transform(src.crs, CRS.from_string("EPSG:4326"), [x_center], [y_center])
 
         lat_center = float(lat[0])
         lon_center = float(lon[0])
@@ -37,7 +38,6 @@ def write_dataset_csv(dsm_path, shade_map_path, dsm_regex, shade_regex, csv_path
     for dsm_filename in os.listdir(dsm_path):
         match = re.search(dsm_regex, dsm_filename)
         if not match:
-            print(f"File {dsm_filename} invalid")
             continue
 
         dsm_osmid = get_regex_group(match, 'osmid')
@@ -48,13 +48,13 @@ def write_dataset_csv(dsm_path, shade_map_path, dsm_regex, shade_regex, csv_path
         for shade_filename in os.listdir(shade_map_path + dsm_tile_num):
             match = re.search(shade_regex, shade_filename)
             if not match:
-                print(f"File {shade_filename} invalid")
                 continue
 
             tile_date = get_regex_group(match, 'date')
             dt = datetime.strptime(tile_date, '%Y%m%d_%H%M')
             location = get_location(shade_map_path + dsm_tile_num + "/" + shade_filename)
 
+            #Todo: Investigate inconsistent results
             sun = sun_position(dt, location)
 
             # Append row
