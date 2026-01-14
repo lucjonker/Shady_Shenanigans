@@ -1,13 +1,45 @@
 import os
 import re
+from dataclasses import dataclass
 
+import pytz
 import rasterio
 import pandas as pd
 from rasterio.crs import CRS
 from rasterio.warp import transform
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.sun_position import sun_position
+
+@dataclass
+class TimeStruct:
+    year: int
+    month: int
+    day: int
+    hour: int
+    minute: int
+    second: int
+    UTC: float  # offset in hours, can be fractional
+
+
+def datetime_to_time_struct(dt: datetime) -> TimeStruct:
+    if dt.tzinfo is None:
+        # Interpret naive datetime as UTC (or change this to your local rule)
+        offset_hours = 0
+    else:
+        offset = dt.utcoffset() or 0
+        offset_hours = offset.total_seconds() / 3600.0
+
+    return TimeStruct(
+        year=dt.year,
+        month=dt.month,
+        day=dt.day,
+        hour=dt.hour,
+        minute=dt.minute,
+        second=dt.second,
+        UTC=offset_hours,
+    )
+
 
 
 def get_location(path):
@@ -52,10 +84,14 @@ def write_dataset_csv(dsm_path, shade_map_path, dsm_regex, shade_regex, csv_path
 
             tile_date = get_regex_group(match, 'date')
             dt = datetime.strptime(tile_date, '%Y%m%d_%H%M')
+            dt.replace(tzinfo=timezone.utc)
+            tz = pytz.timezone('Europe/Amsterdam')
+            tz_dt = dt.astimezone(tz)
+            time = datetime_to_time_struct(tz_dt)
             location = get_location(shade_map_path + dsm_tile_num + "/" + shade_filename)
 
-            #Todo: Investigate inconsistent results
-            sun = sun_position(dt, location)
+            # Todo: Investigate inconsistent results
+            sun = sun_position(time, location)
 
             # Append row
             d['dsm'].append(dsm_filename)
