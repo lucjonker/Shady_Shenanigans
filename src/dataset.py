@@ -5,7 +5,7 @@ from torchgeo.datasets import RasterDataset
 import re
 
 
-# Todo figure it out
+# Todo these are torchgeo datasets, probably will not support what I am trying to do, replace with custom solution using rasterio?
 class DSMDataset(RasterDataset):
     filename_glob = "*.tif"
     filename_regex = r"^(?P<osmid>\d+)_p_(?P<tile>\d+)_(?P<date>\d{4}_\d{2}_\d{2})_dsm.tif$"
@@ -54,9 +54,10 @@ class ShadePredictionDataset(Dataset):
             # "sun_feat": sun_feat,    # optional for logging / alt conditioning
         }
 
-#Todo: Is this the way to go?
+#Todo: Custom rasterio solution, flesh out to include raster clipping and tiling?
 class CustomGeoDataset(Dataset):
     def __init__(self, file_paths, transform=None):
+        # Todo: add csv parsing for csv containing training tuples
         self.file_paths = file_paths  # List of file paths for geospatial data
         self.transform = transform  # Data augmentation/transformations
 

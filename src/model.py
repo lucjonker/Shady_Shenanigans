@@ -1,6 +1,27 @@
 import torch.nn as nn
 
-import loss_functions
+from src import loss_functions
+
+
+# Todo Extend
+class ShadyModel:
+    def __init__(self, ngpu, device):
+        self.ngpu = ngpu
+        self.device = device
+        self.generator = Generator(ngpu).to(self.device)
+        # Todo replace static loss with implemented discriminator
+        self.discriminator = loss_functions.l1_loss
+
+    def setup_models(self):
+        # Handle multi-GPU if desired
+        if (self.device.type == 'cuda') and (self.ngpu > 1):
+            self.generator = nn.DataParallel(self.generator, list(range(self.ngpu)))
+            # self.discriminator = nn.DataParallel(self.discriminator, list(range(self.ngpu)))
+
+        # Apply the weights_init function to randomly initialize
+        # all weights to mean=0, stdev=0.02
+        self.generator.apply(weights_init)
+        # self.discriminator.apply(weights_init)
 
 
 # Todo Define Generator
@@ -34,24 +55,3 @@ def weights_init(m):
     elif classname.find('BatchNorm') != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
-
-
-# Todo Extend
-class ShadyModel:
-    def __init__(self, ngpu, device):
-        self.ngpu = ngpu
-        self.device = device
-        self.generator = Generator(ngpu).to(self.device)
-        # Todo implement discriminator
-        self.discriminator = loss_functions.l1_loss
-
-    def setup_models(self):
-        # Handle multi-GPU if desired
-        if (self.device.type == 'cuda') and (self.ngpu > 1):
-            self.generator = nn.DataParallel(self.generator, list(range(self.ngpu)))
-            # self.discriminator = nn.DataParallel(self.discriminator, list(range(self.ngpu)))
-
-        # Apply the weights_init function to randomly initialize
-        # all weights to mean=0, stdev=0.02
-        self.generator.apply(weights_init)
-        # self.discriminator.apply(weights_init)
