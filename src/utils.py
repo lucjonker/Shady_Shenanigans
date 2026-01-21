@@ -1,45 +1,14 @@
 import os
 import re
-from dataclasses import dataclass
 
 import pytz
 import rasterio
 import pandas as pd
 from rasterio.crs import CRS
 from rasterio.warp import transform
-from datetime import datetime, timezone
-
-from src.sun_position import sun_position
-
-@dataclass
-class TimeStruct:
-    year: int
-    month: int
-    day: int
-    hour: int
-    minute: int
-    second: int
-    UTC: float  # offset in hours, can be fractional
-
-
-def datetime_to_time_struct(dt: datetime) -> TimeStruct:
-    if dt.tzinfo is None:
-        # Interpret naive datetime as UTC (or change this to your local rule)
-        offset_hours = 0
-    else:
-        offset = dt.utcoffset() or 0
-        offset_hours = offset.total_seconds() / 3600.0
-
-    return TimeStruct(
-        year=dt.year,
-        month=dt.month,
-        day=dt.day,
-        hour=dt.hour,
-        minute=dt.minute,
-        second=dt.second,
-        UTC=offset_hours,
-    )
-
+from pysolar.solar import get_altitude, get_azimuth
+from timezonefinder import TimezoneFinder
+from datetime import datetime
 
 
 def get_location(path):
@@ -54,7 +23,8 @@ def get_location(path):
         lat_center = float(lat[0])
         lon_center = float(lon[0])
 
-        return {'latitude': lat_center, 'longitude': lon_center, 'altitude': 0}
+        # Todo: do we need the altitude as well?
+        return lat_center, lon_center
 
 
 def get_regex_group(match, group_name):
@@ -65,7 +35,8 @@ def get_regex_group(match, group_name):
 
 
 def write_dataset_csv(dsm_path, shade_map_path, dsm_regex, shade_regex, csv_path):
-    d = {'dsm': [], 'shade_map': [], 'zenith': [], 'azimuth': []}
+    d = {'tile': [], 'dsm': [], 'shade_map': [], 'zenith': [], 'azimuth': []}
+    tf = TimezoneFinder(in_memory=True)
     # For each tile DSM
     for dsm_filename in os.listdir(dsm_path):
         match = re.search(dsm_regex, dsm_filename)
@@ -82,22 +53,26 @@ def write_dataset_csv(dsm_path, shade_map_path, dsm_regex, shade_regex, csv_path
             if not match:
                 continue
 
+            # Get latitude and longitude
+            lat, lon = get_location(shade_map_path + dsm_tile_num + "/" + shade_filename)
+
+            # Get localized, daylight savings aware timezone
             tile_date = get_regex_group(match, 'date')
             dt = datetime.strptime(tile_date, '%Y%m%d_%H%M')
-            dt.replace(tzinfo=timezone.utc)
-            tz = pytz.timezone('Europe/Amsterdam')
-            tz_dt = dt.astimezone(tz)
-            time = datetime_to_time_struct(tz_dt)
-            location = get_location(shade_map_path + dsm_tile_num + "/" + shade_filename)
+            tz = tf.timezone_at(lng=lon, lat=lat)
+            a = pytz.timezone(tz)
+            time = a.localize(dt, is_dst=False)
 
-            # Todo: Investigate inconsistent results
-            sun = sun_position(time, location)
+            # Calculate solar angles
+            zenith = get_altitude(lat, lon, time)
+            azimuth = get_azimuth(lat, lon, time)
 
             # Append row
+            d['tile'].append(dsm_tile_num)
             d['dsm'].append(dsm_filename)
             d['shade_map'].append(shade_filename)
-            d['zenith'].append(sun['zenith'][0])
-            d['azimuth'].append(sun['azimuth'][0])
+            d['zenith'].append(zenith)
+            d['azimuth'].append(azimuth)
 
     # Write data to csv
     df = pd.DataFrame(data=d)
