@@ -1,3 +1,4 @@
+from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
 from src.dataset import DSMShadeDataset
@@ -24,14 +25,25 @@ def run():
     num_batches = len(dataloader)
     print(len_dataset, num_batches)
 
-    # for batch in dataloader:
-    #     d_in = batch["input"]
-    #     target = batch["target"]
-    #     sun_feat = batch["sun_feat"]
-    #
-    #     print(d_in.shape)
-    #     print(target.shape)
-    #     print(sun_feat)
+    # show inputs and targets
+    plt.figure(figsize=(16, 6))
+    for i in range(5):
+        plt.subplot(2, 5, i + 1)
+        data = dataloader.dataset.__getitem__(i)
+        input = data["input"]
+        dsm_image = input[0]
+        plt.imshow(dsm_image.squeeze().numpy())
+        plt.axis('off')
+
+        plt.subplot(2, 5, i + 6)
+        target = data["target"]
+        shade_image = target[0]
+        plt.imshow(shade_image.squeeze().numpy())
+        plt.axis('off')
+
+        print(f"Pair {i + 1}: {data["dsm"]} and {data["shade"]}")
+
+    plt.show()
 
 
 if __name__ == '__main__':
