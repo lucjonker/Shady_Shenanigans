@@ -10,6 +10,8 @@ from pysolar.solar import get_altitude, get_azimuth
 from timezonefinder import TimezoneFinder
 from datetime import datetime
 
+DSM_REGEX = r"^(?P<osmid>\d+)_p_(?P<tile>\d+)_(?P<date>\d{4}_\d{2}_\d{2})_dsm.tif$"
+SHADE_REGEX = r"^(?P<osmid>\d+)_p_(?P<tile>\d+)_Shadow_(?P<date>\d{8}_\d{4})_LST.tif$"
 
 def get_location(path):
     with rasterio.open(path) as src:
@@ -34,7 +36,7 @@ def get_regex_group(match, group_name):
     return None
 
 
-def write_dataset_csv(dsm_path, shade_map_path, dsm_regex, shade_regex, csv_path):
+def write_dataset_csv(dsm_path, shade_map_path, csv_path, dsm_regex = DSM_REGEX, shade_regex =SHADE_REGEX):
     d = {'tile': [], 'dsm': [], 'shade_map': [], 'zenith': [], 'azimuth': []}
     tf = TimezoneFinder(in_memory=True)
     # For each tile DSM

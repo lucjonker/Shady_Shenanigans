@@ -1,37 +1,50 @@
 import torch.nn as nn
 
 from src import loss_functions
+from src.dataset import TARGET_W, TARGET_H
 
 
 # Todo Extend
 class ShadyModel:
-    def __init__(self, ngpu, device):
+    def __init__(self, ngpu, device, tile_size=512):
         self.ngpu = ngpu
         self.device = device
-        self.generator = Generator(ngpu).to(self.device)
+        self.generator = Generator(ngpu, tile_size)
         # Todo replace static loss with implemented discriminator
         self.discriminator = loss_functions.l1_loss
 
     def setup_models(self):
-        # Handle multi-GPU if desired
-        if (self.device.type == 'cuda') and (self.ngpu > 1):
-            self.generator = nn.DataParallel(self.generator, list(range(self.ngpu)))
-            # self.discriminator = nn.DataParallel(self.discriminator, list(range(self.ngpu)))
-
+        # # Handle multi-GPU if desired (todo add mac version?)
+        # if (self.device.type == 'cuda') and (self.ngpu > 1):
+        #     self.generator = nn.DataParallel(self.generator, list(range(self.ngpu)))
+        #     # self.discriminator = nn.DataParallel(self.discriminator, list(range(self.ngpu)))
+        self.generator.to(self.device)
         # Apply the weights_init function to randomly initialize
         # all weights to mean=0, stdev=0.02
         self.generator.apply(weights_init)
         # self.discriminator.apply(weights_init)
 
-
-# Todo Define Generator
 class Generator(nn.Module):
-    def __init__(self, ngpu):
+    def __init__(self, ngpu, tile_size: int):
         super(Generator, self).__init__()
+        self.tile_size_w = tile_size if tile_size is not None else TARGET_W
+        self.tile_size_h = tile_size if tile_size is not None else TARGET_H
+        self.dim_in = 5 * self.tile_size_w * self.tile_size_h
+        self.dim_out = self.tile_size_w * self.tile_size_h
+        # Todo: Incredibly basic network for testing
+        self.network = nn.Sequential(
+            nn.Linear(self.dim_in, 10),
+            nn.ReLU(),
+            nn.Linear(10, self.dim_out)
+        )
         self.ngpu = ngpu
 
     def forward(self, x):
-        return x
+        # super basic linear pass for testing
+        x = x.view(-1, self.dim_in)
+        y = self.network(x)
+        # Todo: Incredibly basic network for testing
+        return y.view(1, 1, self.tile_size_h, self.tile_size_w)
 
 
 # # Todo Define Discriminator
