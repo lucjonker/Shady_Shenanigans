@@ -14,23 +14,22 @@ CSV_PATH = "/Users/luc/Geomatics/Thesis/ShadyShenanigans/resources/dataset.csv"
 
 
 def run():
-    # print("Generating dataset CSV")
-    # write_dataset_csv(TEST_TILE_PATH, TEST_SHADE_PATH, CSV_PATH)
+    print("Generating dataset CSV")
+    write_dataset_csv(TEST_TILE_PATH, TEST_SHADE_PATH, CSV_PATH)
 
-    dataset = DSMShadeDataset("/Users/luc/Geomatics/Thesis/ShadyShenanigans/resources/dataset.csv", TEST_TILE_PATH,
-                              TEST_SHADE_PATH, tile_size=512)
-
-    # Test that tiling works
-    for i in range(150):
-        data = dataset.__getitem__(i)
-        print(f"Tile: {data["dsm_id"]} and {data["shade_id"]}, subtile: {data['subtile']}")
-        print("-------------------")
-
+    # dataset = DSMShadeDataset("/Users/luc/Geomatics/Thesis/ShadyShenanigans/resources/dataset.csv", TEST_TILE_PATH,
+    #                           TEST_SHADE_PATH, tile_size=512)
+    #
+    # # # Test that tiling works
+    # # for i in range(150):
+    # #     data = dataset.__getitem__(i)
+    # #     print(f"Tile: {data["dsm_id"]} and {data["shade_id"]}, subtile: {data['subtile']}")
+    # #     print("-------------------")
+    #
     # # show inputs and targets
     # plt.figure(figsize=(16, 6))
     # for i in range(5):
     #     plt.subplot(2, 5, i + 1)
-    #     index = random.randint(0, dataset_size)
     #     data = dataset.__getitem__(i)
     #     source = data["source"]
     #     dsm_image = source[0]

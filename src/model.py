@@ -11,7 +11,7 @@ class ShadyModel:
         self.device = device
         self.generator = Generator(ngpu, tile_size)
         # Todo replace static loss with implemented discriminator
-        self.discriminator = loss_functions.l1_loss
+        self.discriminator = loss_functions.l2_loss
 
     def setup_models(self):
         # # Handle multi-GPU if desired (todo add mac version?)
@@ -33,9 +33,10 @@ class Generator(nn.Module):
         self.dim_out = self.tile_size_w * self.tile_size_h
         # Todo: Incredibly basic network for testing
         self.network = nn.Sequential(
-            nn.Linear(self.dim_in, 10),
-            nn.ReLU(),
-            nn.Linear(10, self.dim_out)
+            nn.Linear(self.dim_in, 256),
+            nn.LeakyReLU(0.01),
+            nn.Linear(256, self.dim_out),
+            nn.Sigmoid(),
         )
         self.ngpu = ngpu
 
@@ -47,14 +48,20 @@ class Generator(nn.Module):
         return y.view(1, 1, self.tile_size_h, self.tile_size_w)
 
 
-# # Todo Define Discriminator
-# class Discriminator(nn.Module):
-#     def __init__(self, ngpu):
-#         super(Discriminator, self).__init__()
-#         self.ngpu = ngpu
-#
-#     def forward(self, x):
-#         return self.main(x)
+# Todo Define more complex Discriminator
+class Discriminator(nn.Module):
+    def __init__(self, in_features):
+        super().__init__()
+        self.disc = nn.Sequential(
+            nn.Linear(in_features, 128),
+            nn.LeakyReLU(0.01),
+            nn.Linear(128, 1),
+            nn.Sigmoid(),
+        )
+
+
+    def forward(self, x):
+        return self.disc(x)
 
 
 # Todo: do I want this at all? https://docs.pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html

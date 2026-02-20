@@ -1,4 +1,3 @@
-import torch as t
 from torch import nn
 
 def l1_loss(y_true, y_pred):
@@ -8,6 +7,10 @@ def l1_loss(y_true, y_pred):
 
 def l2_loss(y_true, y_pred):
     loss = nn.MSELoss()
+    return loss(y_true, y_pred)
+
+def BCE_loss(y_true, y_pred):
+    loss = nn.BCELoss()
     return loss(y_true, y_pred)
 
 

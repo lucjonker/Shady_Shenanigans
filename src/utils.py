@@ -69,12 +69,15 @@ def write_dataset_csv(dsm_path, shade_map_path, csv_path, dsm_regex = DSM_REGEX,
             zenith = get_altitude(lat, lon, time)
             azimuth = get_azimuth(lat, lon, time)
 
-            # Append row
-            d['tile'].append(dsm_tile_num)
-            d['dsm'].append(dsm_filename)
-            d['shade_map'].append(shade_filename)
-            d['zenith'].append(zenith)
-            d['azimuth'].append(azimuth)
+            if zenith > 15:
+                # Append row
+                d['tile'].append(dsm_tile_num)
+                d['dsm'].append(dsm_filename)
+                d['shade_map'].append(shade_filename)
+                d['zenith'].append(zenith)
+                d['azimuth'].append(azimuth)
+            else:
+                print(f"Zenith {zenith} out of range")
 
     # Write data to csv
     df = pd.DataFrame(data=d)
