@@ -66,8 +66,15 @@ class DSMShadeDataset(Dataset):
         dsm_arr = center_crop_to(dsm_arr, TARGET_H, TARGET_W) # (1892, 1903)
 
         # to tensors with channel dim
-        dsm = torch.from_numpy(dsm_arr).unsqueeze(0)  # (1, 1892, 1903)
+        dsm = torch.from_numpy(dsm_arr).unsqueeze(0) # (1, 1892, 1903)
         shade = torch.from_numpy(shade_arr).unsqueeze(0)  # (1, 1892, 1903)
+
+        # Normalize dsm to range 0-1
+        dsmin = dsm.min()
+        dsm = dsm - dsmin
+
+        dsmax = dsm.max()
+        dsm = dsm / dsmax
 
         # Sub-tile from data
         if self.tile_size is not None:
@@ -81,7 +88,7 @@ class DSMShadeDataset(Dataset):
             y0 = int(row_offset * offset)
             x0 = int(column_offset * offset)
 
-            # Prevent losing data on extremes of tile (todo: evenly spread?)
+            # Prevent losing data on extremes of tile
             if y0 + th > H:
                 y0 = H - th
             if x0 + tw > W:
@@ -100,6 +107,7 @@ class DSMShadeDataset(Dataset):
         sun_maps = sun_feat.view(C_sun, 1, 1).expand(C_sun, H, W)  # (4, H, W)
         x = torch.cat([dsm, sun_maps], dim=0)  # (1 + 4, H, W)
 
+        #Todo: do we want transforms
         if self.transforms is not None:
             x, shade = self.transforms(x, shade)
 

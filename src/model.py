@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 from src import loss_functions
@@ -11,7 +12,7 @@ class ShadyModel:
         self.device = device
         self.generator = Generator(ngpu, tile_size)
         # Todo replace static loss with implemented discriminator
-        self.discriminator = loss_functions.l2_loss
+        self.discriminator = loss_functions.l1_loss
 
     def setup_models(self):
         # # Handle multi-GPU if desired (todo add mac version?)
@@ -24,6 +25,7 @@ class ShadyModel:
         self.generator.apply(weights_init)
         # self.discriminator.apply(weights_init)
 
+
 class Generator(nn.Module):
     def __init__(self, ngpu, tile_size: int):
         super(Generator, self).__init__()
@@ -31,21 +33,97 @@ class Generator(nn.Module):
         self.tile_size_h = tile_size if tile_size is not None else TARGET_H
         self.dim_in = 5 * self.tile_size_w * self.tile_size_h
         self.dim_out = self.tile_size_w * self.tile_size_h
-        # Todo: Incredibly basic network for testing
-        self.network = nn.Sequential(
-            nn.Linear(self.dim_in, 256),
-            nn.LeakyReLU(0.01),
-            nn.Linear(256, self.dim_out),
-            nn.Sigmoid(),
+
+        # Encoder (DownSampling)
+        self.down1 = DownSample(5, 64, apply_batchnorm=False) # C64
+        self.down2 = DownSample(64, 128)   # C128
+        self.down3 = DownSample(128, 256)  # C256
+        self.down4 = DownSample(256, 512)  # C512
+        self.down5 = DownSample(512, 512)  # C512
+        self.down6 = DownSample(512, 512)  # C512
+        self.down7 = DownSample(512, 512)  # C512
+        self.down8 = DownSample(512, 512)  # C512
+        self.down9 = DownSample(512, 512)  # C512
+
+        # Decoder (Upsampling)
+        self.up1 = UpSample(512, 512, apply_dropout=True)  # CD1024
+        self.up2 = UpSample(1024, 512, apply_dropout=True) # CD1024
+        self.up3 = UpSample(1024, 512, apply_dropout=True) # CD1024
+        self.up4 = UpSample(1024, 512) # C1024
+        self.up5 = UpSample(1024, 512) # C1024
+        self.up6 = UpSample(1024, 256) # C1024
+        self.up7 = UpSample(512, 128)  # C512
+        self.up8 = UpSample(256, 64)   # C256
+
+        self.final = nn.Sequential(
+            nn.ConvTranspose2d(128, 1, kernel_size=4, stride=2, padding=1),
+            nn.Sigmoid(), # Shade output between 0 and 1
         )
+
         self.ngpu = ngpu
 
     def forward(self, x):
-        # super basic linear pass for testing
-        x = x.view(-1, self.dim_in)
-        y = self.network(x)
-        # Todo: Incredibly basic network for testing
-        return y.view(1, 1, self.tile_size_h, self.tile_size_w)
+        # Encoder forward   (batch_size, 5, 512, 512)
+        d1 = self.down1(x)  # (batch_size, 64, 256, 256)
+        d2 = self.down2(d1) # (batch_size, 128, 128, 128)
+        d3 = self.down3(d2) # (batch_size, 256, 64, 64)
+        d4 = self.down4(d3) # (batch_size, 512, 32, 32)
+        d5 = self.down5(d4) # (batch_size, 512, 16, 16)
+        d6 = self.down6(d5) # (batch_size, 512, 8, 8)
+        d7 = self.down7(d6) # (batch_size, 512, 4, 4)
+        d8 = self.down8(d7) # (batch_size, 512, 2, 2)
+        d9 = self.down9(d8) # (batch_size, 512, 1, 1)
+
+        # Decoder forward + skip connections (U-Net)
+        u1 = self.up1(d9, d8) # (batch_size, 1024, 2, 2)
+        u2 = self.up2(u1, d7) # (batch_size, 1024, 4, 4)
+        u3 = self.up3(u2, d6) # (batch_size, 1024, 8, 8)
+        u4 = self.up4(u3, d5) # (batch_size, 1024, 16, 16)
+        u5 = self.up5(u4, d4) # (batch_size, 1024, 32, 32)
+        u6 = self.up6(u5, d3) # (batch_size, 512, 64, 64)
+        u7 = self.up7(u6, d2) # (batch_size, 256, 128, 128)
+        u8 = self.up8(u7, d1)  # (batch_size, 128, 256, 256)
+
+        return self.final(u8) # (batch_size, 1, 512, 512)
+
+
+# Inspo https://medium.com/@ms.maryamrezaee/pix2pix-pytorch-implementation-what-is-it-and-how-to-do-it-f53bce51c84e
+class DownSample(nn.Module):
+
+    def __init__(self, in_channels, out_channels, apply_batchnorm=True):
+        super(DownSample, self).__init__()
+
+        layers = [
+            nn.Conv2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=not apply_batchnorm)
+        ]
+        if apply_batchnorm:
+            layers.append(nn.BatchNorm2d(out_channels))
+        layers.append(nn.LeakyReLU(0.2, inplace=True))
+
+        self.down = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.down(x)
+
+
+class UpSample(nn.Module):
+    def __init__(self, in_channels, out_channels, apply_dropout=False):
+        super(UpSample, self).__init__()
+
+        layers = [
+            nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        ]
+        if apply_dropout:
+            layers.append(nn.Dropout(0.5))
+
+        self.up = nn.Sequential(*layers)
+
+    def forward(self, x, skip):
+        x = self.up(x)
+        x = torch.cat([x, skip], dim=1)  # skip connection concatenating
+        return x
 
 
 # Todo Define more complex Discriminator
@@ -59,10 +137,8 @@ class Discriminator(nn.Module):
             nn.Sigmoid(),
         )
 
-
     def forward(self, x):
         return self.disc(x)
-
 
 # Todo: do I want this at all? https://docs.pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
 # takes an initialized model as input and reinitializes all convolutional,
