@@ -6,6 +6,8 @@ import rasterio
 import torch
 from torch.utils.data import Dataset
 
+from src.utils import compute_sun_features, get_tile_coordinates
+
 TARGET_W, TARGET_H = 1892, 1903
 
 
@@ -16,17 +18,6 @@ def center_crop_to(arr, out_h, out_w):
     x0 = (w - out_w) // 2
     return arr[y0:y0 + out_h, x0:x0 + out_w]
 
-
-# Return 4D tensor [sin_az, cos_az, sin_el, cos_el]. (removing circular encoding of angles)
-def compute_sun_features(zenith, azimuth):
-    return torch.tensor([
-        math.sin(azimuth), math.cos(azimuth),
-        math.sin(zenith), math.cos(zenith)
-    ], dtype=torch.float32)  # (4,)
-
-
-def num_subtiles(tile_size):
-    math.floor()
 
 class DSMShadeDataset(Dataset):
     def __init__(self, index_csv, dsm_path, shade_path, tile_size=None, transforms=None):
@@ -63,10 +54,10 @@ class DSMShadeDataset(Dataset):
         shade_arr = self._read_band(shade_path)  # (1892, 1903)
 
         # center-crop DSM to shade size
-        dsm_arr = center_crop_to(dsm_arr, TARGET_H, TARGET_W) # (1892, 1903)
+        dsm_arr = center_crop_to(dsm_arr, TARGET_H, TARGET_W)  # (1892, 1903)
 
         # to tensors with channel dim
-        dsm = torch.from_numpy(dsm_arr).unsqueeze(0) # (1, 1892, 1903)
+        dsm = torch.from_numpy(dsm_arr).unsqueeze(0)  # (1, 1892, 1903)
         shade = torch.from_numpy(shade_arr).unsqueeze(0)  # (1, 1892, 1903)
 
         # Normalize dsm to range 0-1
@@ -83,31 +74,23 @@ class DSMShadeDataset(Dataset):
             column_offset = int(tile_id % self.sub_tiles_x)
             offset = int(self.tile_size / 2)
 
-            th = tw = self.tile_size
             _, H, W = dsm.shape
-            y0 = int(row_offset * offset)
-            x0 = int(column_offset * offset)
+            x0, y0 = get_tile_coordinates(H, W, int(column_offset * offset), int(row_offset * offset), self.tile_size)
 
-            # Prevent losing data on extremes of tile
-            if y0 + th > H:
-                y0 = H - th
-            if x0 + tw > W:
-                x0 = W - tw
-
-            dsm = dsm[:, y0:y0 + th, x0:x0 + tw]
-            shade = shade[:, y0:y0 + th, x0:x0 + tw]
+            dsm = dsm[:, y0:y0 + self.tile_size, x0:x0 + self.tile_size]
+            shade = shade[:, y0:y0 + self.tile_size, x0:x0 + self.tile_size]
             # print(x0, y0, dsm.shape)
 
         # sun features from datetime
         sun_feat = compute_sun_features(row["zenith"], row["azimuth"])  # (4,)
 
         # broadcast to constant maps and concatenate with DSM
-        C_sun = sun_feat.shape[0]
+        sun_shape = sun_feat.shape[0]
         _, H, W = dsm.shape
-        sun_maps = sun_feat.view(C_sun, 1, 1).expand(C_sun, H, W)  # (4, H, W)
+        sun_maps = sun_feat.view(sun_shape, 1, 1).expand(sun_shape, H, W)  # (4, H, W)
         x = torch.cat([dsm, sun_maps], dim=0)  # (1 + 4, H, W)
 
-        #Todo: do we want transforms
+        # Todo: do we want transforms?
         if self.transforms is not None:
             x, shade = self.transforms(x, shade)
 
@@ -116,7 +99,7 @@ class DSMShadeDataset(Dataset):
             "target": shade,  # shade map
             # Todo: testing metadata, remove if not used
             # "sun_feat": sun_feat,
-            "dsm_id": row['dsm'],
-            "shade_id": row['shade_map'],
-            "subtile": idx % (self.sub_tiles_x * self.sub_tiles_y)
+            # "dsm_id": row['dsm'],
+            # "shade_id": row['shade_map'],
+            # "subtile": idx % (self.sub_tiles_x * self.sub_tiles_y)
         }

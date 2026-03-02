@@ -1,9 +1,12 @@
+import math
 import os
 import re
 
 import pytz
 import rasterio
 import pandas as pd
+import torch
+from matplotlib import pyplot as plt
 from rasterio.crs import CRS
 from rasterio.warp import transform
 from pysolar.solar import get_altitude, get_azimuth
@@ -12,6 +15,7 @@ from datetime import datetime
 
 DSM_REGEX = r"^(?P<osmid>\d+)_p_(?P<tile>\d+)_(?P<date>\d{4}_\d{2}_\d{2})_dsm.tif$"
 SHADE_REGEX = r"^(?P<osmid>\d+)_p_(?P<tile>\d+)_Shadow_(?P<date>\d{8}_\d{4})_LST.tif$"
+
 
 def get_location(path):
     with rasterio.open(path) as src:
@@ -36,7 +40,24 @@ def get_regex_group(match, group_name):
     return None
 
 
-def write_dataset_csv(dsm_path, shade_map_path, csv_path, dsm_regex = DSM_REGEX, shade_regex =SHADE_REGEX):
+# Return 4D tensor [sin_az, cos_az, sin_el, cos_el]. (removing circular encoding of angles)
+def compute_sun_features(zenith, azimuth):
+    return torch.tensor([
+        math.sin(azimuth), math.cos(azimuth),
+        math.sin(zenith), math.cos(zenith)
+    ], dtype=torch.float32)  # (4,)
+
+def get_tile_coordinates(self, H, W, col: int, row: int, tile_size: int) -> tuple[int, int]:
+    y0 = row
+    x0 = col
+    # Prevent losing data on extremes of tile
+    if row + tile_size > H:
+        y0 = H - tile_size
+    if col + tile_size > W:
+        x0 = W - tile_size
+    return x0, y0
+
+def write_dataset_csv(dsm_path, shade_map_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHADE_REGEX):
     d = {'tile': [], 'dsm': [], 'shade_map': [], 'zenith': [], 'azimuth': []}
     tf = TimezoneFinder(in_memory=True)
     # For each tile DSM

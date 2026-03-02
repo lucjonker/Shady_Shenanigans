@@ -1,8 +1,9 @@
+import os
+
 import torch
 import torch.nn as nn
 
 from src import loss_functions
-from src.dataset import TARGET_W, TARGET_H
 
 
 # Todo Extend
@@ -10,29 +11,42 @@ class ShadyModel:
     def __init__(self, ngpu, device, tile_size=512):
         self.ngpu = ngpu
         self.device = device
-        self.generator = Generator(ngpu, tile_size)
+        # Tile size hard coded for 512x512
+        self.generator = Generator()
         # Todo replace static loss with implemented discriminator
         self.discriminator = loss_functions.l1_loss
 
-    def setup_models(self):
+    def setup_models(self, eval_only: bool = False, state_dict_dir: str = None):
+        if state_dict_dir is not None:
+            self.generator.load_state_dict(torch.load(os.path.join(state_dict_dir, 'generator.pth')))
+            # if not eval_only:
+            #     self.discriminator.load_state_dict(torch.load(os.path.join(state_dict_dir, 'discriminator.pth')))
+        else:
+            # Apply the weights_init function to randomly initialize all weights to mean=0, stdev=0.02
+            self.generator.apply(weights_init)
+            # self.discriminator.apply(weights_init)
+
         # # Handle multi-GPU if desired (todo add mac version?)
-        # if (self.device.type == 'cuda') and (self.ngpu > 1):
+        # if (self.device.type == 'cuda') and (self.ngpu > 1) and not eval_only:
         #     self.generator = nn.DataParallel(self.generator, list(range(self.ngpu)))
         #     # self.discriminator = nn.DataParallel(self.discriminator, list(range(self.ngpu)))
         self.generator.to(self.device)
-        # Apply the weights_init function to randomly initialize
-        # all weights to mean=0, stdev=0.02
-        self.generator.apply(weights_init)
-        # self.discriminator.apply(weights_init)
+        # self.discriminator.to(self.device)
+        if eval_only:
+            self.generator.eval()
+            # self.discriminator.eval()
 
+    def save(self, directory, eval_only: bool = True):
+        # Save Generator
+        torch.save(self.generator.state_dict(), os.path.join(directory, 'generator.pth'))
+
+        # if not eval_only:
+        #     # Save Discriminator todo only works once discriminator is a model
+        #     torch.save(self.discriminator.state_dict(), os.path.join(directory, 'discriminator.pth'))
 
 class Generator(nn.Module):
-    def __init__(self, ngpu, tile_size: int):
+    def __init__(self):
         super(Generator, self).__init__()
-        self.tile_size_w = tile_size if tile_size is not None else TARGET_W
-        self.tile_size_h = tile_size if tile_size is not None else TARGET_H
-        self.dim_in = 5 * self.tile_size_w * self.tile_size_h
-        self.dim_out = self.tile_size_w * self.tile_size_h
 
         # Encoder (DownSampling)
         self.down1 = DownSample(5, 64, apply_batchnorm=False) # C64
@@ -60,8 +74,6 @@ class Generator(nn.Module):
             nn.Sigmoid(), # Shade output between 0 and 1
         )
 
-        self.ngpu = ngpu
-
     def forward(self, x):
         # Encoder forward   (batch_size, 5, 512, 512)
         d1 = self.down1(x)  # (batch_size, 64, 256, 256)
@@ -83,8 +95,9 @@ class Generator(nn.Module):
         u6 = self.up6(u5, d3) # (batch_size, 512, 64, 64)
         u7 = self.up7(u6, d2) # (batch_size, 256, 128, 128)
         u8 = self.up8(u7, d1)  # (batch_size, 128, 256, 256)
+        fin = self.final(u8) # (batch_size, 1, 512, 512)
 
-        return self.final(u8) # (batch_size, 1, 512, 512)
+        return fin
 
 
 # Inspo https://medium.com/@ms.maryamrezaee/pix2pix-pytorch-implementation-what-is-it-and-how-to-do-it-f53bce51c84e
