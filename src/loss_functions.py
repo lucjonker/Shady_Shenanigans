@@ -1,49 +1,61 @@
+import torch
 from torch import nn
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 
+from src.utils import Sobel
+
+
+# Loss definitions inspired by https://github.com/uic-evl/deep-umbra/blob/main/deep_shadow.py
 def l1_loss(y_true, y_pred):
     loss = nn.L1Loss()
     return loss(y_true, y_pred)
 
 
-def l2_loss(y_true, y_pred):
-    loss = nn.MSELoss()
-    return loss(y_true, y_pred)
-
-def BCE_loss(y_true, y_pred):
+def bce_loss(y_true, y_pred):
     loss = nn.BCELoss()
     return loss(y_true, y_pred)
 
 
-# Todo SSIM Loss
+def ssim(y_true, y_pred):
+    ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(y_pred.device)
+    return ssim(y_pred, y_true)
 
-# Todo Sobel Loss
 
-# # Todo is it actually discriminator loss?
-# def gan_loss(disc_generated_output):
-#     loss = nn.BCELoss  # bce loss (todo why)
-#     return loss(t.ones_like(disc_generated_output), disc_generated_output)
-#
-#
-# def discriminator_loss(disc_real_output, disc_generated_output):
-#     loss = nn.BCELoss  # bce loss (todo why)
-#     real_loss = loss(t.ones_like(disc_real_output), disc_real_output)
-#
-#     generated_loss = loss(t.zeros_like(
-#         disc_generated_output), disc_generated_output)
-#
-#     total_disc_loss = real_loss + generated_loss
-#
-#     return total_disc_loss
-#
-#
-# # Using Lambda (todo wtf are they doing here)
-# def generator_loss(disc_generated_output, gen_output, target, loss_funcs, l):
-#     _gan_loss = gan_loss(disc_generated_output)
-#
-#     _loss = 0
-#     for loss_func in loss_funcs:
-#         _loss += loss_func(target, gen_output)
-#
-#     total_gen_loss = _gan_loss + (l * _loss)
-#
-#     return total_gen_loss, _gan_loss, _loss
+def ssim_loss(y_true, y_pred):
+    val = ssim(y_true, y_pred)
+    return 1 - val
+
+
+def sobel_loss(sobel, y_true, y_pred):
+    square = torch.square(sobel(y_true) - sobel(y_pred))
+    # 2D to 1D
+    m1 = torch.mean(square)
+    # 1D to 1 Value
+    return torch.mean(m1)
+
+
+def composite_loss(sobel, y_true, y_pred):
+    l1loss = l1_loss(y_true, y_pred)
+    ssimloss = ssim_loss(y_true, y_pred)
+    sobelloss = sobel_loss(sobel, y_true, y_pred)
+    return l1loss + ssimloss + sobelloss
+
+
+def generator_loss(discriminator_output, y_hat, target, loss_lambda, sobel):
+    real_class = torch.ones_like(discriminator_output, device=discriminator_output.device)
+    adversarial_loss = bce_loss(discriminator_output, real_class)
+    composite = composite_loss(sobel, y_hat, target)
+
+    total_loss = adversarial_loss + (loss_lambda * composite)
+    return total_loss
+
+
+def discriminator_loss(discriminator_real, discriminator_generated):
+    real_class = torch.ones_like(discriminator_real, device=discriminator_real.device)
+    real_loss = bce_loss(discriminator_real, real_class)
+
+    fake_class = torch.zeros_like(discriminator_generated, device=discriminator_generated.device)
+    fake_loss = bce_loss(discriminator_generated, fake_class)
+
+    total_loss = (real_loss + fake_loss) * 0.5
+    return total_loss

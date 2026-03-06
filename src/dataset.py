@@ -20,7 +20,7 @@ def center_crop_to(arr, out_h, out_w):
 
 
 class DSMShadeDataset(Dataset):
-    def __init__(self, index_csv, dsm_path, shade_path, tile_size=None, transforms=None):
+    def __init__(self, index_csv, dsm_path, shade_path, max_cache=200, tile_size=None, transforms=None):
         """
         index_csv: CSV with columns [dsm, shade, zenith, azimuth]
         tile_size: optional patch size (e.g. 512); if None, use full 1892x1903.
@@ -35,14 +35,26 @@ class DSMShadeDataset(Dataset):
         self.sub_tiles_x = int(TARGET_W // (tile_size / 2)) if tile_size is not None else 1
         self.sub_tiles_y = int(TARGET_H // (tile_size / 2)) if tile_size is not None else 1
 
+        self.dsm_cache = {}
+        self.shade_cache = {}
+        self.max_cache = max_cache
+
     def __len__(self):
         # When sub-tiling the larger tile, we want to ensure we reflect that in the length of the dataset
         return int(len(self.df) * (self.sub_tiles_x * self.sub_tiles_y))
 
-    def _read_band(self, path):
+    def _read_band(self, path, cache):
+        if cache.get(path) is not None:
+            return cache[path]
+
         with rasterio.open(path) as src:
             arr = src.read(1)  # (H, W)
-        return arr.astype(np.float32)
+        fl32arr = arr.astype(np.float32)
+
+        if len(cache) > self.max_cache:
+            cache.popitem()
+        cache[path] = fl32arr
+        return fl32arr
 
     def __getitem__(self, idx):
         # Divide by sub-tile to get main tile from dataframe
@@ -50,8 +62,8 @@ class DSMShadeDataset(Dataset):
         dsm_path = f"{self.dsm_path}{row['dsm']}"
         shade_path = f"{self.shade_path}{row['tile']}/{row['shade_map']}"
 
-        dsm_arr = self._read_band(dsm_path)  # (1992, 2003)
-        shade_arr = self._read_band(shade_path)  # (1892, 1903)
+        dsm_arr = self._read_band(dsm_path, self.dsm_cache)  # (1992, 2003)
+        shade_arr = self._read_band(shade_path, self.shade_cache)  # (1892, 1903)
 
         # center-crop DSM to shade size
         dsm_arr = center_crop_to(dsm_arr, TARGET_H, TARGET_W)  # (1892, 1903)

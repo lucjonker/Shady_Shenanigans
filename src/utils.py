@@ -1,17 +1,18 @@
 import math
 import os
 import re
+from datetime import datetime
 
+import pandas as pd
 import pytz
 import rasterio
-import pandas as pd
 import torch
-from matplotlib import pyplot as plt
+import torch.nn.functional as F
+from pysolar.solar import get_altitude, get_azimuth
 from rasterio.crs import CRS
 from rasterio.warp import transform
-from pysolar.solar import get_altitude, get_azimuth
 from timezonefinder import TimezoneFinder
-from datetime import datetime
+from torch import nn
 
 DSM_REGEX = r"^(?P<osmid>\d+)_p_(?P<tile>\d+)_(?P<date>\d{4}_\d{2}_\d{2})_dsm.tif$"
 SHADE_REGEX = r"^(?P<osmid>\d+)_p_(?P<tile>\d+)_Shadow_(?P<date>\d{8}_\d{4})_LST.tif$"
@@ -47,7 +48,8 @@ def compute_sun_features(zenith, azimuth):
         math.sin(zenith), math.cos(zenith)
     ], dtype=torch.float32)  # (4,)
 
-def get_tile_coordinates(self, H, W, col: int, row: int, tile_size: int) -> tuple[int, int]:
+
+def get_tile_coordinates(H, W, col: int, row: int, tile_size: int) -> tuple[int, int]:
     y0 = row
     x0 = col
     # Prevent losing data on extremes of tile
@@ -56,6 +58,7 @@ def get_tile_coordinates(self, H, W, col: int, row: int, tile_size: int) -> tupl
     if col + tile_size > W:
         x0 = W - tile_size
     return x0, y0
+
 
 def write_dataset_csv(dsm_path, shade_map_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHADE_REGEX):
     d = {'tile': [], 'dsm': [], 'shade_map': [], 'zenith': [], 'azimuth': []}
@@ -103,3 +106,25 @@ def write_dataset_csv(dsm_path, shade_map_path, csv_path, dsm_regex=DSM_REGEX, s
     # Write data to csv
     df = pd.DataFrame(data=d)
     df.to_csv(csv_path, index=False)
+
+
+# SOURCE https://github.com/chaddy1004/sobel-operator-pytorch
+class Sobel(nn.Module):
+    def __init__(self, device):
+        super(Sobel, self).__init__()
+        kernel_v = [[0, -1, 0],
+                    [0, 0, 0],
+                    [0, 1, 0]]
+        kernel_h = [[0, 0, 0],
+                    [-1, 0, 1],
+                    [0, 0, 0]]
+        kernel_h = torch.Tensor(kernel_h).unsqueeze(0).unsqueeze(0).to(device)
+        kernel_v = torch.Tensor(kernel_v).unsqueeze(0).unsqueeze(0).to(device)
+        self.weight_h = nn.Parameter(data=kernel_h, requires_grad=False)
+        self.weight_v = nn.Parameter(data=kernel_v, requires_grad=False)
+
+    def forward(self, img):
+        x_v = F.conv2d(img, self.weight_v, padding=1)
+        x_h = F.conv2d(img, self.weight_h, padding=1)
+        x = torch.sqrt(torch.pow(x_v, 2) + torch.pow(x_h, 2) + 1e-6)
+        return x

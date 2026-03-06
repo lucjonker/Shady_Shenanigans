@@ -18,7 +18,7 @@ class ShadeEvaluator:
     # Todo: save multiple outputs
     # Todo: visualize outputs?
     # Todo: optional clipping of the output
-    def evaluate(self, dsm_path, date_time):
+    def evaluate(self, dsm_path, date_time, overlap):
         # Get latitude and longitude
         lat, lon = get_location(dsm_path)
 
@@ -27,7 +27,6 @@ class ShadeEvaluator:
         azimuth = get_azimuth(lat, lon, date_time)
 
         tile_size = 512
-        overlap = 64
         stride = tile_size - overlap
 
         with rasterio.open(dsm_path) as src:
