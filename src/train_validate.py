@@ -1,8 +1,10 @@
 import argparse
+import os
 import time
 
 import numpy as np
 import torch
+from pathlib import Path as P
 import lightning as L
 from torch import optim
 from torch.utils.data import SubsetRandomSampler, DataLoader
@@ -12,7 +14,6 @@ from dataset import DSMShadeDataset
 from model import ShadyModel
 from utils import Sobel, df_to_csv
 
-# TEST_DATA_PATH = "/Users/luc/Geomatics/Thesis/test_data/"
 TEST_DATA_PATH = "../../training_data/"
 CSV_PATH = "../resources/dataset.csv"
 STATE_DICT_DIR = "../resources/"
@@ -35,7 +36,8 @@ def train(args):
     np.random.seed(42)
 
     # Instantiate the custom dataset
-    dataset = DSMShadeDataset(CSV_PATH, TEST_DATA_PATH, max_cache=150)
+    data_path = P(os.getenv('DATASETS_ROOT', default=TEST_DATA_PATH))
+    dataset = DSMShadeDataset(CSV_PATH, data_path, max_cache=85)
 
     # Creating data indices for training and validation splits:
     dataset_size = len(dataset)
@@ -69,10 +71,11 @@ def train(args):
     sobel = Sobel(device)
     d = {'train_g_losses': [], 'train_d_losses': [], 'val_g_losses': [], 'val_d_losses': [], 'time': []}
     start_time = time.time()
+    print("Training...")
     for epoch in range(args.epochs):
         model.train()
         train_g_loss, train_d_loss = 0.0, 0.0
-
+        print("Fake epoch train")
         for i, data in enumerate(train_loader, 0):
             source, target = data["source"].to(device), data["target"].to(device)
             # ### DISCRIMINATOR TRAINING LOOP ###
@@ -98,6 +101,7 @@ def train(args):
         model.eval()
         val_g_loss, val_d_loss = 0.0, 0.0
 
+        print("Fake epoch val")
         with torch.no_grad():
             for i, data in enumerate(validation_loader, 0):
                 source, target = data["source"].to(device), data["target"].to(device)
@@ -125,6 +129,7 @@ def train(args):
 
             if epoch % 10 == 0:
                 # model.save(STATE_DICT_DIR, generator_only=False)
+                print("Fake epoch checkpoint")
                 df_to_csv(LOSS_PATH, d)
 
 

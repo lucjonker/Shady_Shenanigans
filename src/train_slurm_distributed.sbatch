@@ -1,25 +1,25 @@
 #!/bin/sh
-#SBATCH --job-name=ljonk-shady-4gpu
+#SBATCH --job-name=ljonk-shady-1gpu
 #SBATCH --partition=general
-#SBATCH --account=ewi-insy-reit
 
-##SBATCH --qos=short
-#SBATCH --qos=reservation
-#SBATCH --reservation=reit-course-scalable-ai
+#SBATCH --qos=short  # Request Quality of Service. Default is 'short' (maximum run time: 4 hours)
 
-#SBATCH --time=0:02:00
+#SBATCH --time=0:5:00
 #SBATCH --nodes=1                        # This needs to match Fabric(num_nodes=...)
-#SBATCH --ntasks-per-node=4              # This needs to match Fabric(devices=...)
-#SBATCH --cpus-per-task=6
-#SBATCH --gres=gpu:4
-#SBATCH --mem-per-cpu=1G
+#SBATCH --ntasks-per-node=1              # This needs to match Fabric(devices=...)
+#SBATCH --cpus-per-task=2
+#SBATCH --gres=gpu:1
+#SBATCH --mem-per-cpu=2G
+#SBATCH --mail-type=END     # Set mail type to 'END' to receive a mail when the job finishes.
 #SBATCH --output=slurm_%x_%j.out
 #SBATCH --error=slurm_%x_%j.err
 
 # Start measuring execution time
 start_time=$(date +%s)
 
-export APPTAINER_IMAGE=/tudelft.net/staff-umbrella/REITcourses/apptainer/pytorch2.2.1-cuda12.1.sif
+# The script uses the DATASETS_ROOT variable to locate the dataset.
+export DATASETS_ROOT="/tudelft.net/staff-umbrella/UDSstorage/msc_ljonker/training_data/"
+export APPTAINER_IMAGE=/tudelft.net/staff-umbrella/UDSstorage/msc_ljonker/containers/lightning.sif
 
 # Check that container file exists
 if [ ! -f $APPTAINER_IMAGE ]; then
@@ -31,7 +31,7 @@ echo "Hostname: `hostname`"
 
 # Load CUDA that is compatible to container libraries
 module use /opt/insy/modulefiles
-module load cuda/12.1
+module load cuda
 
 nvidia-smi
 
@@ -47,11 +47,9 @@ GPU_MONITOR_PID=$!
 # Run script
 srun apptainer exec \
     --nv \
-    --env-file /tudelft.net/staff-umbrella/REITcourses/.env \
-    -B /home/:/home/ \
     -B /tudelft.net/:/tudelft.net/ \
     $APPTAINER_IMAGE \
-    python script.py --devices 4
+    python train_validate.py --devices 1
 
 # Terminate the GPU monitoring process
 kill $GPU_MONITOR_PID
