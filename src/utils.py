@@ -1,6 +1,7 @@
 import math
 import os
 import re
+import sys
 from datetime import datetime
 
 import pandas as pd
@@ -8,6 +9,7 @@ import pytz
 import rasterio
 import torch
 import torch.nn.functional as F
+from matplotlib import pyplot as plt
 from pysolar.solar import get_altitude, get_azimuth
 from rasterio.crs import CRS
 from rasterio.warp import transform
@@ -60,52 +62,107 @@ def get_tile_coordinates(H, W, col: int, row: int, tile_size: int) -> tuple[int,
     return x0, y0
 
 
-def write_dataset_csv(dsm_path, shade_map_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHADE_REGEX):
-    d = {'tile': [], 'dsm': [], 'shade_map': [], 'zenith': [], 'azimuth': []}
+def write_dataset_csv(data_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHADE_REGEX):
+    d = {'osmid': [], 'tile': [], 'dsm': [], 'shade_map': [], 'zenith': [], 'azimuth': []}
     tf = TimezoneFinder(in_memory=True)
-    # For each tile DSM
-    for dsm_filename in os.listdir(dsm_path):
-        match = re.search(dsm_regex, dsm_filename)
-        if not match:
+    # For each cities' data
+    for city_filename in os.listdir(data_path):
+        # Skip mac ds store
+        if city_filename == ".DS_Store":
             continue
-
-        dsm_osmid = get_regex_group(match, 'osmid')
-        dsm_tile_num = get_regex_group(match, 'tile')
-        print(f"Writing entries for osmid: {dsm_osmid}", f"tile: {dsm_tile_num}...")
-
-        # For each shade map corresponding to the same tile
-        for shade_filename in os.listdir(shade_map_path + dsm_tile_num):
-            match = re.search(shade_regex, shade_filename)
+        print(f"Processing city with osmid: {city_filename}")
+        # For each dsm within the city
+        for dsm_filename in os.listdir(f"{data_path}{city_filename}/input"):
+            match = re.search(dsm_regex, dsm_filename)
             if not match:
                 continue
 
-            # Get latitude and longitude
-            lat, lon = get_location(shade_map_path + dsm_tile_num + "/" + shade_filename)
+            dsm_osmid = get_regex_group(match, 'osmid')
+            dsm_tile_num = get_regex_group(match, 'tile')
+            print(f"Writing for tile: {dsm_tile_num}...")
 
-            # Get localized, daylight savings aware timezone
-            tile_date = get_regex_group(match, 'date')
-            dt = datetime.strptime(tile_date, '%Y%m%d_%H%M')
-            tz = tf.timezone_at(lng=lon, lat=lat)
-            a = pytz.timezone(tz)
-            time = a.localize(dt, is_dst=False)
+            # For each shade map corresponding to the same tile
+            for shade_filename in os.listdir(f"{data_path}{city_filename}/targets/{dsm_tile_num}"):
+                match = re.search(shade_regex, shade_filename)
+                if not match:
+                    continue
 
-            # Calculate solar angles
-            zenith = get_altitude(lat, lon, time)
-            azimuth = get_azimuth(lat, lon, time)
+                # Get latitude and longitude
+                lat, lon = get_location(f"{data_path}{city_filename}/targets/{dsm_tile_num}/{shade_filename}")
 
-            if zenith > 15:
-                # Append row
-                d['tile'].append(dsm_tile_num)
-                d['dsm'].append(dsm_filename)
-                d['shade_map'].append(shade_filename)
-                d['zenith'].append(zenith)
-                d['azimuth'].append(azimuth)
-            else:
-                print(f"Zenith {zenith} out of range")
+                # Get localized, daylight savings aware timezone
+                tile_date = get_regex_group(match, 'date')
+                dt = datetime.strptime(tile_date, '%Y%m%d_%H%M')
+                tz = tf.timezone_at(lng=lon, lat=lat)
+                a = pytz.timezone(tz)
+                time = a.localize(dt, is_dst=False)
 
+                # Calculate solar angles
+                zenith = get_altitude(lat, lon, time)
+                azimuth = get_azimuth(lat, lon, time)
+
+                if zenith > 15:
+                    # Append row
+                    d["osmid"].append(dsm_osmid)
+                    d['tile'].append(dsm_tile_num)
+                    d['dsm'].append(dsm_filename)
+                    d['shade_map'].append(shade_filename)
+                    d['zenith'].append(zenith)
+                    d['azimuth'].append(azimuth)
+                else:
+                    print(f"Zenith {zenith} out of range")
+
+    df_to_csv(csv_path, d)
+
+
+def df_to_csv(csv_path, d: dict):
     # Write data to csv
+    script_dir = os.path.abspath(os.path.dirname(sys.argv[0]) or '.')
     df = pd.DataFrame(data=d)
+    csv_path = os.path.join(script_dir, csv_path)
     df.to_csv(csv_path, index=False)
+
+
+def plot_losses(g_losses, d_losses, title="Loss Analysis:"):
+    plt.figure(figsize=(10, 5))
+    plt.suptitle(title, fontsize=16)
+
+    plt.plot(range(1, len(g_losses) + 1), g_losses, label="Generator Loss")
+    plt.plot(range(1, len(d_losses) + 1), d_losses, label="Discriminator Loss")
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.title("Generator and Discriminator Loss Over Epochs")
+    plt.legend()
+    plt.show()
+
+
+# Plots result and target images assuming they come from the gpu
+def display_res(source, result, target):
+    source_cpu = source.cpu()
+    result_cpu = result.cpu().detach()
+    target_cpu = target.cpu().detach()
+
+    plt.figure(figsize=(16, 6))
+    ax1 = plt.subplot(1, 3, 1)
+    result = source_cpu[0][0]
+    plt.imshow(result.numpy())
+    ax1.title.set_text("Source")
+    plt.axis('off')
+
+    ax2 = plt.subplot(1, 3, 2)
+    result = result_cpu[0]
+    plt.imshow(result.squeeze().numpy())
+    ax2.title.set_text("Model Result")
+    plt.axis('off')
+
+    ax3 = plt.subplot(1, 3, 3)
+    result = target_cpu[0]
+    plt.imshow(result.squeeze().numpy())
+    ax3.title.set_text("Target Result")
+    plt.axis('off')
+
+    plt.set_cmap("viridis")
+    plt.show()
 
 
 # SOURCE https://github.com/chaddy1004/sobel-operator-pytorch

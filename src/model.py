@@ -24,21 +24,12 @@ class ShadyModel:
             if not eval_only:
                 self.discriminator.load_state_dict(torch.load(os.path.join(state_dict_dir, 'discriminator.pth')))
         else:
-            # Apply the weights_init function to randomly initialize all weights to mean=0, stdev=0.02
             self.generator.apply(weights_init)
             if not eval_only:
                 self.discriminator.apply(weights_init)
 
-        # # Handle multi-GPU if desired (todo add mac version?)
-        # if (self.device.type == 'cuda') and (self.ngpu > 1) and not eval_only:
-        #     self.generator = nn.DataParallel(self.generator, list(range(self.ngpu)))
-        #     # self.discriminator = nn.DataParallel(self.discriminator, list(range(self.ngpu)))
-
         self.generator.to(self.device)
-        if eval_only:
-            self.generator.eval()
-        else:
-            self.discriminator.to(self.device)
+        self.discriminator.to(self.device)
 
     def save(self, directory, generator_only: bool = True):
         # Save Generator
@@ -46,6 +37,14 @@ class ShadyModel:
         if not generator_only:
             # Save Discriminator
             torch.save(self.discriminator.state_dict(), os.path.join(directory, 'discriminator.pth'))
+
+    def train(self):
+        self.generator.train()
+        self.discriminator.train()
+
+    def eval(self):
+        self.generator.eval()
+        self.discriminator.eval()
 
 
 class Generator(nn.Module):
@@ -173,7 +172,7 @@ class Discriminator(nn.Module):
         return verdict
 
 
-# Todo: do I want this at all? https://docs.pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
+# INSPO https://docs.pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
 # takes an initialized model as input and reinitializes all convolutional,
 # convolutional-transpose, and batch normalization layers to meet the criteria
 # that all model weights shall be randomly initialized from a Normal distribution with mean=0, stdev=0.02

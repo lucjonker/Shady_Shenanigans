@@ -1,0 +1,12 @@
+numpy
+matplotlib
+torch
+torchvision
+pandas
+pytz
+rasterio
+pysolar
+timezonefinder
+torchmetrics
+lightning
+tqdm

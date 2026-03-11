@@ -2,8 +2,6 @@ import torch
 from torch import nn
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 
-from src.utils import Sobel
-
 
 # Loss definitions inspired by https://github.com/uic-evl/deep-umbra/blob/main/deep_shadow.py
 def l1_loss(y_true, y_pred):

@@ -6,7 +6,7 @@ import rasterio
 import torch
 from torch.utils.data import Dataset
 
-from src.utils import compute_sun_features, get_tile_coordinates
+from utils import compute_sun_features, get_tile_coordinates
 
 TARGET_W, TARGET_H = 1892, 1903
 
@@ -20,15 +20,14 @@ def center_crop_to(arr, out_h, out_w):
 
 
 class DSMShadeDataset(Dataset):
-    def __init__(self, index_csv, dsm_path, shade_path, max_cache=200, tile_size=None, transforms=None):
+    def __init__(self, index_csv, data_path, max_cache=200, tile_size=512, transforms=None):
         """
         index_csv: CSV with columns [dsm, shade, zenith, azimuth]
         tile_size: optional patch size (e.g. 512); if None, use full 1892x1903.
         transforms: optional extra transforms on tensors.
         """
         self.df = pd.read_csv(index_csv)
-        self.dsm_path = dsm_path
-        self.shade_path = shade_path
+        self.data_path = data_path
         self.tile_size = tile_size
         self.transforms = transforms
 
@@ -40,7 +39,7 @@ class DSMShadeDataset(Dataset):
         self.max_cache = max_cache
 
     def __len__(self):
-        # When sub-tiling the larger tile, we want to ensure we reflect that in the length of the dataset
+        # When sub-tiling the larger tile reflect in the length of the dataset
         return int(len(self.df) * (self.sub_tiles_x * self.sub_tiles_y))
 
     def _read_band(self, path, cache):
@@ -59,8 +58,9 @@ class DSMShadeDataset(Dataset):
     def __getitem__(self, idx):
         # Divide by sub-tile to get main tile from dataframe
         row = self.df.iloc[int(idx // (self.sub_tiles_x * self.sub_tiles_y))]
-        dsm_path = f"{self.dsm_path}{row['dsm']}"
-        shade_path = f"{self.shade_path}{row['tile']}/{row['shade_map']}"
+        root = f"{self.data_path}{row['osmid']}"
+        dsm_path = f"{root}/input/{row['dsm']}"
+        shade_path = f"{root}/targets/{row['tile']}/{row['shade_map']}"
 
         dsm_arr = self._read_band(dsm_path, self.dsm_cache)  # (1992, 2003)
         shade_arr = self._read_band(shade_path, self.shade_cache)  # (1892, 1903)

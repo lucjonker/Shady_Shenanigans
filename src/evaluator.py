@@ -14,6 +14,7 @@ class ShadeEvaluator:
         self.model = ShadyModel(1, device)
         self.results_dir = results_dir
         self.model.setup_models(eval_only=True, state_dict_dir=state_dict_dir)
+        self.model.eval()
 
     # Todo: save multiple outputs
     # Todo: visualize outputs?
