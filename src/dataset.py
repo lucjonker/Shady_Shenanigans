@@ -58,7 +58,7 @@ class DSMShadeDataset(Dataset):
     def __getitem__(self, idx):
         # Divide by sub-tile to get main tile from dataframe
         row = self.df.iloc[int(idx // (self.sub_tiles_x * self.sub_tiles_y))]
-        root = f"{self.data_path}{row['osmid']}"
+        root = f"{self.data_path}/{row['osmid']}"
         dsm_path = f"{root}/input/{row['dsm']}"
         shade_path = f"{root}/targets/{row['tile']}/{row['shade_map']}"
 

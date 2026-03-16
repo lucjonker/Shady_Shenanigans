@@ -3,6 +3,7 @@ import os
 import re
 import sys
 from datetime import datetime
+from os.path import dirname
 
 import pandas as pd
 import pytz
@@ -115,11 +116,10 @@ def write_dataset_csv(data_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHAD
     df_to_csv(csv_path, d)
 
 
-def df_to_csv(csv_path, d: dict):
+def df_to_csv(csv_root: str, csv_name: str, d: dict):
     # Write data to csv
-    script_dir = os.path.abspath(os.path.dirname(sys.argv[0]) or '.')
     df = pd.DataFrame(data=d)
-    csv_path = os.path.join(script_dir, csv_path)
+    csv_path = os.path.join(csv_root, csv_name)
     df.to_csv(csv_path, index=False)
 
 

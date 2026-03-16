@@ -4,22 +4,23 @@
 
 #SBATCH --qos=short  # Request Quality of Service. Default is 'short' (maximum run time: 4 hours)
 
-#SBATCH --time=0:5:00
+#SBATCH --time=1:00:00
 #SBATCH --nodes=1                        # This needs to match Fabric(num_nodes=...)
 #SBATCH --ntasks-per-node=1              # This needs to match Fabric(devices=...)
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:1
-#SBATCH --mem-per-cpu=2G
+#SBATCH --mem-per-cpu=3G
 #SBATCH --mail-type=END     # Set mail type to 'END' to receive a mail when the job finishes.
-#SBATCH --output=slurm_%x_%j.out
-#SBATCH --error=slurm_%x_%j.err
+#SBATCH --output=logs/slurm_%x_%j.out
+#SBATCH --error=logs/slurm_%x_%j.err
 
 # Start measuring execution time
 start_time=$(date +%s)
 
 # The script uses the DATASETS_ROOT variable to locate the dataset.
 export DATASETS_ROOT="/tudelft.net/staff-umbrella/UDSstorage/msc_ljonker/training_data/"
-export APPTAINER_IMAGE=/tudelft.net/staff-umbrella/UDSstorage/msc_ljonker/containers/lightning.sif
+export RESULTS_ROOT="/tudelft.net/staff-umbrella/UDSstorage/msc_ljonker/ShadyShenanigans/results/"
+export APPTAINER_IMAGE=/tudelft.net/staff-umbrella/UDSstorage/msc_ljonker/containers/dev_image.sif
 
 # Check that container file exists
 if [ ! -f $APPTAINER_IMAGE ]; then
@@ -31,13 +32,13 @@ echo "Hostname: `hostname`"
 
 # Load CUDA that is compatible to container libraries
 module use /opt/insy/modulefiles
-module load cuda
+module load cuda/12.1
 
 nvidia-smi
 
 # Start GPU monitoring in the background
-GPU_USAGE_FILE="gpu-usage-${SLURM_JOB_ID}.csv"
-nvidia-smi --query-gpu=timestamp,index,utilization.gpu,utilization.memory,memory.used,memory.total --format=csv -l 1 > $GPU_USAGE_FILE &
+GPU_USAGE_FILE="logs/gpu-usage-${SLURM_JOB_ID}.csv"
+nvidia-smi --query-gpu=timestamp,index,utilization.gpu,utilization.memory,memory.used,memory.total --format=csv -l 60 > $GPU_USAGE_FILE &
 GPU_MONITOR_PID=$!
 
 # Prevents direct GPU-to-GPU communication in NVIDIA's collective communications library

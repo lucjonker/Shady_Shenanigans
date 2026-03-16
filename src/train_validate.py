@@ -4,6 +4,9 @@ import time
 
 import numpy as np
 import torch
+
+torch.set_float32_matmul_precision('medium')
+
 from pathlib import Path as P
 import lightning as L
 from torch import optim
@@ -17,7 +20,7 @@ from utils import Sobel, df_to_csv
 TEST_DATA_PATH = "../../training_data/"
 CSV_PATH = "../resources/dataset.csv"
 STATE_DICT_DIR = "../resources/"
-LOSS_PATH = "../results/loss.csv"
+RESULTS_PATH = "../results/"
 
 
 # https://reit.pages.ewi.tudelft.nl/course-scalable-ai-101-on-daic/075-handson-pytorch-to-fabric.html
@@ -28,6 +31,7 @@ def train(args):
                           else "cuda" if torch.cuda.is_available()
     else "cpu")
 
+    print(device)
     # Launch fabric
     fabric = L.Fabric(accelerator="gpu", devices=args.devices)
     fabric.launch()
@@ -37,7 +41,9 @@ def train(args):
 
     # Instantiate the custom dataset
     data_path = P(os.getenv('DATASETS_ROOT', default=TEST_DATA_PATH))
-    dataset = DSMShadeDataset(CSV_PATH, data_path, max_cache=85)
+    dataset = DSMShadeDataset(CSV_PATH, data_path, max_cache=100)
+
+    results_path = os.getenv('RESULTS_ROOT', default=RESULTS_PATH)
 
     # Creating data indices for training and validation splits:
     dataset_size = len(dataset)
@@ -55,7 +61,7 @@ def train(args):
     validation_loader = DataLoader(dataset, batch_size=args.batch_size, sampler=valid_sampler, num_workers=args.workers)
 
     model = ShadyModel(args.devices, device)
-    model.setup_models(state_dict_dir=STATE_DICT_DIR)
+    model.setup_models()
     disc_optimizer = optim.Adam(params=model.discriminator.parameters(), lr=args.learning_rate,
                                 betas=(args.momentum, 0.999))
     gen_optimizer = optim.Adam(params=model.generator.parameters(), lr=args.learning_rate,
@@ -130,13 +136,13 @@ def train(args):
             if epoch % 10 == 0:
                 # model.save(STATE_DICT_DIR, generator_only=False)
                 print("Fake epoch checkpoint")
-                df_to_csv(LOSS_PATH, d)
+                df_to_csv(results_path, "loss.csv", d)
 
 
 def run():
     parser = argparse.ArgumentParser(description="Train a Shade raster prediction model")
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation')
-    parser.add_argument('--workers', type=int, default=4, help='Number of workers for DataLoader')
+    parser.add_argument('--workers', type=int, default=2, help='Number of workers for DataLoader')
     parser.add_argument('--epochs', type=int, default=20, help='Number of epochs for training')
     parser.add_argument('--learning_rate', type=float, default=0.0002, help='Initial learning rate')
     parser.add_argument('--validation_split', type=float, default=.2, help='Ratio of training data for validation')
