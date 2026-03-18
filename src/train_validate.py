@@ -31,7 +31,6 @@ def train(args):
                           else "cuda" if torch.cuda.is_available()
     else "cpu")
 
-    print(device)
     # Launch fabric
     fabric = L.Fabric(accelerator="gpu", devices=args.devices)
     fabric.launch()
@@ -77,50 +76,50 @@ def train(args):
     sobel = Sobel(device)
     d = {'train_g_losses': [], 'train_d_losses': [], 'val_g_losses': [], 'val_d_losses': [], 'time': []}
     start_time = time.time()
-    print("Training...")
+    fabric.print("Beginning Training...")
     for epoch in range(args.epochs):
         model.train()
         train_g_loss, train_d_loss = 0.0, 0.0
-        print("Fake epoch train")
+        fabric.print(f"Train epoch {epoch}")
         for i, data in enumerate(train_loader, 0):
             source, target = data["source"].to(device), data["target"].to(device)
-            # ### DISCRIMINATOR TRAINING LOOP ###
-            # disc_optimizer.zero_grad()
-            # y_hat = generator(source)
-            # discriminator_real = discriminator(source, target)
-            # discriminator_generated = discriminator(source, y_hat)
-            # disc_loss = loss_functions.discriminator_loss(discriminator_real, discriminator_generated)
-            # fabric.backward(disc_loss, retain_graph=True, model=discriminator)
-            # disc_optimizer.step()
-            #
-            # ### GENERATOR TRAINING LOOP ###
-            # gen_optimizer.zero_grad()
-            # discriminator_output = discriminator(source, y_hat)
-            # gen_loss = loss_functions.generator_loss(discriminator_output, y_hat, target, args.LAMBDA, sobel)
-            # fabric.backward(gen_loss, model=generator)
-            # gen_optimizer.step()
-            #
-            # train_d_loss += disc_loss.item()
-            # train_g_loss += gen_loss.item()
+            ### DISCRIMINATOR TRAINING LOOP ###
+            disc_optimizer.zero_grad()
+            y_hat = generator(source)
+            discriminator_real = discriminator(source, target)
+            discriminator_generated = discriminator(source, y_hat)
+            disc_loss = loss_functions.discriminator_loss(discriminator_real, discriminator_generated)
+            fabric.backward(disc_loss, retain_graph=True, model=discriminator)
+            disc_optimizer.step()
+
+            ### GENERATOR TRAINING LOOP ###
+            gen_optimizer.zero_grad()
+            discriminator_output = discriminator(source, y_hat)
+            gen_loss = loss_functions.generator_loss(discriminator_output, y_hat, target, args.LAMBDA, sobel)
+            fabric.backward(gen_loss, model=generator)
+            gen_optimizer.step()
+
+            train_d_loss += disc_loss.item()
+            train_g_loss += gen_loss.item()
 
         # VALIDATION
+        fabric.print(f"Val epoch {epoch}")
         model.eval()
         val_g_loss, val_d_loss = 0.0, 0.0
 
-        print("Fake epoch val")
         with torch.no_grad():
             for i, data in enumerate(validation_loader, 0):
                 source, target = data["source"].to(device), data["target"].to(device)
 
-                # y_hat = model.generator(source)
-                # real_output = model.discriminator(source, target)
-                # discriminator_generated = model.discriminator(source, y_hat)
-                #
-                # disc_loss = loss_functions.discriminator_loss(real_output, discriminator_generated)
-                # gen_loss = loss_functions.generator_loss(discriminator_generated, y_hat, target, args.LAMBDA, sobel)
-                #
-                # val_d_loss += disc_loss.item()
-                # val_g_loss += gen_loss.item()
+                y_hat = model.generator(source)
+                real_output = model.discriminator(source, target)
+                discriminator_generated = model.discriminator(source, y_hat)
+
+                disc_loss = loss_functions.discriminator_loss(real_output, discriminator_generated)
+                gen_loss = loss_functions.generator_loss(discriminator_generated, y_hat, target, args.LAMBDA, sobel)
+
+                val_d_loss += disc_loss.item()
+                val_g_loss += gen_loss.item()
 
         # Only record stats on one process
         if fabric.global_rank == 0:
@@ -134,8 +133,8 @@ def train(args):
             d['time'].append(time.time() - start_time)
 
             if epoch % 10 == 0:
-                # model.save(STATE_DICT_DIR, generator_only=False)
-                print("Fake epoch checkpoint")
+                fabric.print(f"Checkpoint epoch {epoch}")
+                model.save(STATE_DICT_DIR, generator_only=False)
                 df_to_csv(results_path, "loss.csv", d)
 
 
@@ -150,7 +149,7 @@ def run():
     parser.add_argument('--LAMBDA', type=float, default=100,
                         help='Determines ratio between adversarial and composite loss')
 
-    parser.add_argument('--devices', type=int, default=1, help='Number of GPUs to use')
+    parser.add_argument('--devices', type=int, default=4, help='Number of GPUs to use')
     args = parser.parse_args()
 
     # Run training

@@ -1,14 +1,15 @@
 #!/bin/sh
 #SBATCH --job-name=ljonk-shady-1gpu
+#SBATCH --account=bk-ur-uds
 #SBATCH --partition=general
 
 #SBATCH --qos=short  # Request Quality of Service. Default is 'short' (maximum run time: 4 hours)
 
-#SBATCH --time=1:00:00
+#SBATCH --time=4:00:00
 #SBATCH --nodes=1                        # This needs to match Fabric(num_nodes=...)
-#SBATCH --ntasks-per-node=1              # This needs to match Fabric(devices=...)
+#SBATCH --ntasks-per-node=4              # This needs to match Fabric(devices=...)
 #SBATCH --cpus-per-task=2
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:4
 #SBATCH --mem-per-cpu=3G
 #SBATCH --mail-type=END     # Set mail type to 'END' to receive a mail when the job finishes.
 #SBATCH --output=logs/slurm_%x_%j.out
