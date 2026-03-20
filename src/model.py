@@ -11,32 +11,15 @@ import torch.nn as nn
 
 # Todo Extend
 class ShadyModel:
-    def __init__(self, ngpu, device, tile_size=512):
-        self.ngpu = ngpu
-        self.device = device
+    def __init__(self):
         # Tile size hard coded for 512x512
         self.generator = Generator()
         self.discriminator = Discriminator()
 
-    def setup_models(self, eval_only: bool = False, state_dict_dir: str = None):
-        if state_dict_dir is not None:
-            self.generator.load_state_dict(torch.load(os.path.join(state_dict_dir, 'generator.pth')))
-            if not eval_only:
-                self.discriminator.load_state_dict(torch.load(os.path.join(state_dict_dir, 'discriminator.pth')))
-        else:
-            self.generator.apply(weights_init)
-            if not eval_only:
-                self.discriminator.apply(weights_init)
-
-        self.generator.to(self.device)
-        self.discriminator.to(self.device)
-
-    def save(self, directory, generator_only: bool = True):
-        # Save Generator
-        torch.save(self.generator.state_dict(), os.path.join(directory, 'generator.pth'))
-        if not generator_only:
-            # Save Discriminator
-            torch.save(self.discriminator.state_dict(), os.path.join(directory, 'discriminator.pth'))
+    def setup_models(self, eval_only: bool = False):
+        self.generator.apply(weights_init)
+        if not eval_only:
+            self.discriminator.apply(weights_init)
 
     def train(self):
         self.generator.train()
