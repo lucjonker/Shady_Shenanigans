@@ -16,7 +16,7 @@ class ShadyModel:
         self.generator = Generator()
         self.discriminator = Discriminator()
 
-    def setup_models(self, eval_only: bool = False):
+    def setup_initial_weights(self, eval_only: bool = False):
         self.generator.apply(weights_init)
         if not eval_only:
             self.discriminator.apply(weights_init)

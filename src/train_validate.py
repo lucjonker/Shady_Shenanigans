@@ -59,7 +59,7 @@ def train(args):
     with fabric.init_module():
         model = ShadyModel()
 
-    model.setup_models()
+    model.setup_initial_weights()
 
     disc_optimizer = optim.Adam(params=model.discriminator.parameters(), lr=args.learning_rate,
                                 betas=(args.momentum, 0.999))

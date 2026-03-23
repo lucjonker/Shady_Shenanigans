@@ -1,26 +1,38 @@
 import numpy as np
 import rasterio
 import torch
+import lightning as L
 from pysolar.solar import get_altitude, get_azimuth
 from rasterio.windows import Window
 
 from src.model import ShadyModel
+from lightning.fabric.utilities import AttributeDict
 from src.utils import get_location, compute_sun_features, get_tile_coordinates
 
 
 class ShadeEvaluator:
-    def __init__(self, device, state_dict_dir, results_dir):
+    def __init__(self, device, checkpoint_path, results_dir):
+        self.fabric = L.Fabric(accelerator=str(device))
         self.device = device
-        self.model = ShadyModel(1, device)
+        self.generator = None
+        self.init_model(checkpoint_path)
         self.results_dir = results_dir
-        #TODO: adjust to work with fabric checkpoints
-        self.model.setup_models(eval_only=True, state_dict_dir=state_dict_dir)
-        self.model.eval()
+
+    def init_model(self, checkpoint_path):
+        self.fabric.launch()
+        self.fabric.seed_everything(42)
+        with self.fabric.init_module():
+            model = ShadyModel()
+            model.eval()
+        self.generator = self.fabric.setup(model.generator)
+        state = AttributeDict(generator=self.generator)
+        self.fabric.load(checkpoint_path, state)
+        print("Model initialized...")
 
     # Todo: save multiple outputs
     # Todo: visualize outputs?
     # Todo: optional clipping of the output
-    def evaluate(self, dsm_path, date_time, overlap):
+    def evaluate(self, dsm_path, date_time, overlap, strategy="max"):
         # Get latitude and longitude
         lat, lon = get_location(dsm_path)
 
@@ -36,7 +48,14 @@ class ShadeEvaluator:
             profile = src.profile.copy()
             profile.update(dtype=rasterio.float32, count=1)
 
-            out_max = np.full((H, W), -np.inf, dtype=np.float32)
+            out_max = None
+            out_acc = None
+            out_hits = None
+            if strategy == "max":
+                out_max = np.full((H, W), -np.inf, dtype=np.float32)
+            if strategy == "mean":
+                out_acc = np.zeros((H, W), dtype=np.float32)
+                out_hits = np.zeros((H, W), dtype=np.float32)
 
             # Iterating over input image
             for row in range(0, H, stride):
@@ -47,7 +66,7 @@ class ShadeEvaluator:
                     # Perform prediction
                     with torch.no_grad():
                         x = x.to(self.device)
-                        pred = self.model.generator(x)
+                        pred = self.generator(x)
 
                     # Removing batch dimension
                     pred = pred.squeeze(0)
@@ -55,12 +74,24 @@ class ShadeEvaluator:
                     pred_np = pred.detach().cpu().numpy().astype(np.float32).squeeze(0)
 
                     # Take max of predicted values
-                    patch = out_max[y0:y0 + tile_size, x0:x0 + tile_size]
-                    out_max[y0:y0 + tile_size, x0:x0 + tile_size] = np.maximum(patch, pred_np)
+                    if strategy == "max":
+                        patch = out_max[y0:y0 + tile_size, x0:x0 + tile_size]
+                        out_max[y0:y0 + tile_size, x0:x0 + tile_size] = np.maximum(patch, pred_np)
+                    if strategy == "mean":
+                        out_acc[y0:y0 + tile_size, x0:x0 + tile_size] += pred_np
+                        out_hits[y0:y0 + tile_size, x0:x0 + tile_size] += float(1.0)
 
-                # Write georeferenced output with original transform/CRS and HxW shape
+                res = None
+                # Average results
+                if strategy == "mean":
+                    # out_hits[out_hits == 0] = 1
+                    res = np.divide(out_acc, out_hits, dtype=np.float32)
+                if strategy == "max":
+                    res = out_max
+
+                # Write out
                 with rasterio.open(self.results_dir + "/result.tif", "w", **profile) as dst:
-                    dst.write(out_max, 1)
+                    dst.write(res, 1)
 
     def prepare_tile(self, H, W, azimuth: float, col: int, row: int, src, tile_size: int, zenith: float):
         x0, y0 = get_tile_coordinates(H, W, col, row, tile_size)
