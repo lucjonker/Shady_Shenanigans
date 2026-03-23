@@ -96,7 +96,7 @@ class DownSample(nn.Module):
         ]
         if apply_batchnorm:
             layers.append(nn.BatchNorm2d(out_channels))
-        layers.append(nn.LeakyReLU(0.2, inplace=True))
+        layers.append(nn.LeakyReLU(0.2))
 
         self.down = nn.Sequential(*layers)
 
@@ -111,7 +111,7 @@ class UpSample(nn.Module):
         layers = [
             nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
+            nn.ReLU()
         ]
         if apply_dropout:
             layers.append(nn.Dropout(0.5))
@@ -134,12 +134,12 @@ class Discriminator(nn.Module):
             return nn.Sequential(
                 nn.Conv2d(in_c, out_c, kernel_size=4, stride=stride, padding=1),
                 nn.BatchNorm2d(out_c),
-                nn.LeakyReLU(0.2, inplace=True)
+                nn.LeakyReLU(0.2)
             )
 
         self.model = nn.Sequential(
             nn.Conv2d(in_channels, 64, kernel_size=4, stride=2, padding=1),  # C64, no BatchNorm
-            nn.LeakyReLU(0.2, inplace=True),
+            nn.LeakyReLU(0.2),
 
             conv_block(64, 128, stride=2),  # C128
             conv_block(128, 256, stride=2),  # C256

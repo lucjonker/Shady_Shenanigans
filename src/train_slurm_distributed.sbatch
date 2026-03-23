@@ -5,11 +5,12 @@
 
 #SBATCH --qos=short  # Request Quality of Service. Default is 'short' (maximum run time: 4 hours)
 
-#SBATCH --time=0:30:00
+#SBATCH --time=4:00:00
 #SBATCH --nodes=1                        # This needs to match Fabric(num_nodes=...)
 #SBATCH --ntasks-per-node=3              # This needs to match Fabric(devices=...)
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:3
+#SBATCH --constraint=gpumem32   # Restrict to GPUs with ≥32 GB VRAM
 #SBATCH --mem-per-cpu=4G
 #SBATCH --mail-type=END     # Set mail type to 'END' to receive a mail when the job finishes.
 #SBATCH --output=logs/slurm_%x_%j.out
@@ -50,7 +51,7 @@ srun apptainer exec \
     --nv \
     -B /tudelft.net/:/tudelft.net/ \
     $APPTAINER_IMAGE \
-    python train_validate.py --devices 1
+    python train_validate.py
 
 # Terminate the GPU monitoring process
 kill $GPU_MONITOR_PID

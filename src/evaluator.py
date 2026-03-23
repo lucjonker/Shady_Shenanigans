@@ -13,6 +13,7 @@ class ShadeEvaluator:
         self.device = device
         self.model = ShadyModel(1, device)
         self.results_dir = results_dir
+        #TODO: adjust to work with fabric checkpoints
         self.model.setup_models(eval_only=True, state_dict_dir=state_dict_dir)
         self.model.eval()
 
