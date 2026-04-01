@@ -1,13 +1,13 @@
+import lightning as L
 import numpy as np
 import rasterio
 import torch
-import lightning as L
+from lightning.fabric.utilities import AttributeDict
 from pysolar.solar import get_altitude, get_azimuth
 from rasterio.windows import Window
 
 from src.model import ShadyModel
-from lightning.fabric.utilities import AttributeDict
-from src.utils import get_location, compute_sun_features, get_tile_coordinates
+from src.utils import compute_sun_features, get_tile_coordinates, get_lat_lon
 
 
 class ShadeEvaluator:
@@ -15,6 +15,7 @@ class ShadeEvaluator:
         self.fabric = L.Fabric(accelerator=str(device))
         self.device = device
         self.generator = None
+        self.training_max = None
         self.init_model(checkpoint_path)
         self.results_dir = results_dir
 
@@ -25,7 +26,7 @@ class ShadeEvaluator:
             model = ShadyModel()
             model.eval()
         self.generator = self.fabric.setup(model.generator)
-        state = AttributeDict(generator=self.generator)
+        state = AttributeDict(generator=self.generator, train_height_max=self.training_max)
         self.fabric.load(checkpoint_path, state)
         print("Model initialized...")
 
@@ -33,17 +34,16 @@ class ShadeEvaluator:
     # Todo: visualize outputs?
     # Todo: optional clipping of the output
     def evaluate(self, dsm_path, date_time, overlap, strategy="max"):
-        # Get latitude and longitude
-        lat, lon = get_location(dsm_path)
-
-        # Calculate solar angles
-        zenith = get_altitude(lat, lon, date_time)
-        azimuth = get_azimuth(lat, lon, date_time)
-
         tile_size = 512
         stride = tile_size - overlap
 
         with rasterio.open(dsm_path) as src:
+            lat, lon = get_lat_lon(src)
+
+            # Calculate solar angles
+            zenith = get_altitude(lat, lon, date_time)
+            azimuth = get_azimuth(lat, lon, date_time)
+
             H, W = src.height, src.width
             profile = src.profile.copy()
             profile.update(dtype=rasterio.float32, count=1)
@@ -101,12 +101,11 @@ class ShadeEvaluator:
         tile = src.read(window=window)
 
         dsm = torch.from_numpy(tile.astype(np.float32))
-        # Normalize dsm to range 0-1
+
+        # Normalize dsm to the highest point in the training dataset (so that input is still correct relatively)
         dsmin = dsm.min()
         dsm = dsm - dsmin
-
-        dsmax = dsm.max()
-        dsm = dsm / dsmax
+        dsm = dsm / self.training_max
 
         sun_feat = compute_sun_features(zenith, azimuth)  # (4,)
 

@@ -5,12 +5,12 @@ import sys
 from datetime import datetime
 from os.path import dirname
 
+import numpy as np
 import pandas as pd
 import pytz
 import rasterio
 import torch
 import torch.nn.functional as F
-from matplotlib import pyplot as plt
 from pysolar.solar import get_altitude, get_azimuth
 from rasterio.crs import CRS
 from rasterio.warp import transform
@@ -21,20 +21,31 @@ DSM_REGEX = r"^(?P<osmid>\d+)_p_(?P<tile>\d+)_(?P<date>\d{4}_\d{2}_\d{2})_dsm.ti
 SHADE_REGEX = r"^(?P<osmid>\d+)_p_(?P<tile>\d+)_Shadow_(?P<date>\d{8}_\d{4})_LST.tif$"
 
 
-def get_location(path):
+def get_raster_data(path):
     with rasterio.open(path) as src:
-        # center of raster in src crs
-        x_center = (src.bounds.left + src.bounds.right) / 2.0
-        y_center = (src.bounds.bottom + src.bounds.top) / 2.0
+        lat, lon = get_lat_lon(src)
 
-        # reproject that point to EPSG:4326
-        lon, lat = transform(src.crs, CRS.from_string("EPSG:4326"), [x_center], [y_center])
+        arr = src.read(1)
+        fl32arr = arr.astype(np.float32)
 
-        lat_center = float(lat[0])
-        lon_center = float(lon[0])
+        # Get normalized max value
+        dsmin = fl32arr.min()
+        dsm = fl32arr - dsmin
+        dsmax = dsm.max()
 
-        # Todo: do we need the altitude as well?
-        return lat_center, lon_center
+        return lat, lon, dsmax
+
+
+def get_lat_lon(src) -> tuple[float, float]:
+    # center of raster in src crs
+    x_center = (src.bounds.left + src.bounds.right) / 2.0
+    y_center = (src.bounds.bottom + src.bounds.top) / 2.0
+    # reproject that point to EPSG:4326
+    lon, lat = transform(src.crs, CRS.from_string("EPSG:4326"), [x_center], [y_center])
+
+    lat_center = float(lat[0])
+    lon_center = float(lon[0])
+    return lat_center, lon_center
 
 
 def get_regex_group(match, group_name):
@@ -64,7 +75,7 @@ def get_tile_coordinates(H, W, col: int, row: int, tile_size: int) -> tuple[int,
 
 
 def write_dataset_csv(data_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHADE_REGEX):
-    d = {'osmid': [], 'tile': [], 'dsm': [], 'shade_map': [], 'zenith': [], 'azimuth': []}
+    d = {'osmid': [], 'tile': [], 'dsm': [], 'shade_map': [], 'zenith': [], 'azimuth': [], 'maximum': []}
     tf = TimezoneFinder(in_memory=True)
     # For each cities' data
     for city_filename in os.listdir(data_path):
@@ -80,16 +91,15 @@ def write_dataset_csv(data_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHAD
 
             dsm_osmid = get_regex_group(match, 'osmid')
             dsm_tile_num = get_regex_group(match, 'tile')
+            # Get latitude, longitude, and normalized maximum value
+            lat, lon, maximum = get_raster_data(f"{data_path}{city_filename}/input/{dsm_filename}")
             print(f"Writing for tile: {dsm_tile_num}...")
-
+            num_skipped = 0
             # For each shade map corresponding to the same tile
             for shade_filename in os.listdir(f"{data_path}{city_filename}/targets/{dsm_tile_num}"):
                 match = re.search(shade_regex, shade_filename)
                 if not match:
                     continue
-
-                # Get latitude and longitude
-                lat, lon = get_location(f"{data_path}{city_filename}/targets/{dsm_tile_num}/{shade_filename}")
 
                 # Get localized, daylight savings aware timezone
                 tile_date = get_regex_group(match, 'date')
@@ -103,17 +113,20 @@ def write_dataset_csv(data_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHAD
                 azimuth = get_azimuth(lat, lon, time)
 
                 if zenith > 15:
-                    # Append row
+                    # Append a row for each sample
                     d["osmid"].append(dsm_osmid)
                     d['tile'].append(dsm_tile_num)
                     d['dsm'].append(dsm_filename)
                     d['shade_map'].append(shade_filename)
                     d['zenith'].append(zenith)
                     d['azimuth'].append(azimuth)
+                    d['maximum'].append(maximum)
                 else:
-                    print(f"Zenith {zenith} out of range")
+                    num_skipped += 1
 
-    df_to_csv(csv_path, d)
+            print(f"Skipped {num_skipped} due to zenith < 15 degrees")
+
+    df_to_csv(csv_path, "dataset.csv", d)
 
 
 def df_to_csv(csv_root: str, csv_name: str, d: dict):
@@ -121,48 +134,6 @@ def df_to_csv(csv_root: str, csv_name: str, d: dict):
     df = pd.DataFrame(data=d)
     csv_path = os.path.join(csv_root, csv_name)
     df.to_csv(csv_path, index=False)
-
-
-def plot_losses(g_losses, d_losses, title="Loss Analysis:"):
-    plt.figure(figsize=(10, 5))
-    plt.suptitle(title, fontsize=16)
-
-    plt.plot(range(1, len(g_losses) + 1), g_losses, label="Generator Loss")
-    plt.plot(range(1, len(d_losses) + 1), d_losses, label="Discriminator Loss")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.title("Generator and Discriminator Loss Over Epochs")
-    plt.legend()
-    plt.show()
-
-
-# Plots result and target images assuming they come from the gpu
-def display_res(source, result, target):
-    source_cpu = source.cpu()
-    result_cpu = result.cpu().detach()
-    target_cpu = target.cpu().detach()
-
-    plt.figure(figsize=(16, 6))
-    ax1 = plt.subplot(1, 3, 1)
-    result = source_cpu[0][0]
-    plt.imshow(result.numpy())
-    ax1.title.set_text("Source")
-    plt.axis('off')
-
-    ax2 = plt.subplot(1, 3, 2)
-    result = result_cpu[0]
-    plt.imshow(result.squeeze().numpy())
-    ax2.title.set_text("Model Result")
-    plt.axis('off')
-
-    ax3 = plt.subplot(1, 3, 3)
-    result = target_cpu[0]
-    plt.imshow(result.squeeze().numpy())
-    ax3.title.set_text("Target Result")
-    plt.axis('off')
-
-    plt.set_cmap("viridis")
-    plt.show()
 
 
 # SOURCE https://github.com/chaddy1004/sobel-operator-pytorch

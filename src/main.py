@@ -1,29 +1,19 @@
-import csv
-import random
-import time
+import os
+from pathlib import Path as P
+from utils import write_dataset_csv
 
-import numpy as np
-from matplotlib import pyplot as plt
-from torch.utils.data import DataLoader, SubsetRandomSampler
-from torchvision.transforms import transforms
-
-from src.dataset import DSMShadeDataset
-from src.loss_functions import ssim_loss, sobel_loss, composite_loss
-from src.utils import write_dataset_csv, Sobel
-
-# Define resources for training
-TEST_DATA_PATH = "/Users/luc/Geomatics/Thesis/test_data/"
-CSV_PATH = "../resources/dataset.csv"
+# Define resources for training todo modify to daic
+TEST_DATA_PATH = "/Volumes/UDSstorage/msc_ljonker/training_data"
+CSV_PATH = "/tudelft.net/UDSstorage/msc_ljonker/ShadyShenanigans/resources/"
 
 
 def run():
     print("Generating dataset CSV")
-    # write_dataset_csv(TEST_DATA_PATH, CSV_PATH)
-    #
-    # with open('/Users/luc/Geomatics/Thesis/ShadyShenanigans/results/results/loss_logs/version_0/metrics.csv', mode='r') as infile:
-    #     reader = csv.reader(infile)
-    #     mydict = dict((rows[0], rows[1]) for rows in reader)
-    #     print(mydict["19"])
+    data_path = P(os.getenv('DATASETS_ROOT', default=TEST_DATA_PATH))
+    write_dataset_csv(data_path, CSV_PATH)
+
+    # dataset = DSMShadeDataset("/Users/luc/Geomatics/Thesis/ShadyShenanigans/resources/dataset.csv", TEST_DATA_PATH, max_cache=150)
+    # print(len(dataset))
 
 
 if __name__ == '__main__':

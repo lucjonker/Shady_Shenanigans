@@ -81,7 +81,7 @@ def train(args):
     # Prepare logging variables
     epoch = 0
     state = AttributeDict(generator=generator, discriminator=discriminator, gen_optimizer=gen_optimizer,
-                          disc_optimizer=disc_optimizer, epoch=epoch)
+                          disc_optimizer=disc_optimizer, epoch=epoch, train_height_max=dataset.training_max)
     # If we have a checkpoint
     my_file = Path(CHECKPOINT_PATH)
     if my_file.is_file():
@@ -121,7 +121,7 @@ def train(args):
         d_tensor = torch.tensor(train_d_loss, device=fabric.device, dtype=torch.float32)
         g_tensor = torch.tensor(train_g_loss, device=fabric.device, dtype=torch.float32)
         train_d_loss, train_g_loss = aggregate_loss(fabric, d_tensor, g_tensor, is_distributed,
-                                                    len(train_loader), args.batch_size)
+                                                    len(train_loader))
 
         # VALIDATION
         print(f"[Rank {fabric.global_rank}] starting validation {epoch}")
@@ -146,7 +146,7 @@ def train(args):
         d_tensor = torch.tensor(val_d_loss, device=fabric.device, dtype=torch.float32)
         g_tensor = torch.tensor(val_g_loss, device=fabric.device, dtype=torch.float32)
         val_d_loss, val_g_loss = aggregate_loss(fabric, d_tensor, g_tensor, is_distributed,
-                                                len(validation_loader), args.batch_size)
+                                                len(validation_loader))
 
         # Only record stats on one process
         if fabric.global_rank == 0:
@@ -165,15 +165,15 @@ def train(args):
         print(f"[Rank {fabric.global_rank}] finished epoch {epoch}")
 
 
-def aggregate_loss(fabric, d_loss, g_loss, is_distributed, num_samples, batch_size):
+def aggregate_loss(fabric, d_loss, g_loss, is_distributed, num_samples):
     if is_distributed:
         # Take the mean over the different GPUS
         d_loss = fabric.all_reduce(d_loss, reduce_op="mean").item()
         g_loss = fabric.all_reduce(g_loss, reduce_op="mean").item()
 
     # Get approximate per-item loss
-    d_loss /= (num_samples * batch_size)
-    g_loss /= (num_samples * batch_size)
+    d_loss /= num_samples
+    g_loss /= num_samples
 
     return d_loss, g_loss
 

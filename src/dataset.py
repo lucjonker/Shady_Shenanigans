@@ -8,8 +8,6 @@ from torch.utils.data import Dataset
 
 from utils import compute_sun_features, get_tile_coordinates
 
-TARGET_W, TARGET_H = 1892, 1903
-
 
 # Center crop a 2D numpy array to (out_h, out_w).
 def center_crop_to(arr, out_h, out_w):
@@ -21,18 +19,14 @@ def center_crop_to(arr, out_h, out_w):
 
 class DSMShadeDataset(Dataset):
     def __init__(self, index_csv, data_path, max_cache=200, tile_size=512, transforms=None):
-        """
-        index_csv: CSV with columns [dsm, shade, zenith, azimuth]
-        tile_size: optional patch size (e.g. 512); if None, use full 1892x1903.
-        transforms: optional extra transforms on tensors.
-        """
         self.df = pd.read_csv(index_csv)
         self.data_path = data_path
+        # Note tile size is flexible with this class but the associated model assumes 512x512 tiles
         self.tile_size = tile_size
+        # Todo: if extra time, create sample index to avoid hardcoded subtile numbers
+        self.sub_tiles_x, self.sub_tiles_y = 7, 7
+        self.training_max = np.max(self.df['maximum'])
         self.transforms = transforms
-
-        self.sub_tiles_x = int(TARGET_W // (tile_size / 2)) if tile_size is not None else 1
-        self.sub_tiles_y = int(TARGET_H // (tile_size / 2)) if tile_size is not None else 1
 
         self.dsm_cache = {}
         self.shade_cache = {}
@@ -42,7 +36,7 @@ class DSMShadeDataset(Dataset):
         # When sub-tiling the larger tile reflect in the length of the dataset
         return int(len(self.df) * (self.sub_tiles_x * self.sub_tiles_y))
 
-    def _read_band(self, path, cache):
+    def read_raster_data(self, path, cache):
         if cache.get(path) is not None:
             return cache[path]
 
@@ -62,22 +56,21 @@ class DSMShadeDataset(Dataset):
         dsm_path = f"{root}/input/{row['dsm']}"
         shade_path = f"{root}/targets/{row['tile']}/{row['shade_map']}"
 
-        dsm_arr = self._read_band(dsm_path, self.dsm_cache)  # (1992, 2003)
-        shade_arr = self._read_band(shade_path, self.shade_cache)  # (1892, 1903)
+        dsm_arr = self.read_raster_data(dsm_path, self.dsm_cache)  # (W, H)
+        shade_arr = self.read_raster_data(shade_path, self.shade_cache)  # (W-, H-)
+        cropto = shade_arr.shape
 
         # center-crop DSM to shade size
-        dsm_arr = center_crop_to(dsm_arr, TARGET_H, TARGET_W)  # (1892, 1903)
+        dsm_arr = center_crop_to(dsm_arr, cropto[0], cropto[1])  # (W-, H-)
 
         # to tensors with channel dim
-        dsm = torch.from_numpy(dsm_arr).unsqueeze(0)  # (1, 1892, 1903)
-        shade = torch.from_numpy(shade_arr).unsqueeze(0)  # (1, 1892, 1903)
+        dsm = torch.from_numpy(dsm_arr).unsqueeze(0)  # (W-, H-)
+        shade = torch.from_numpy(shade_arr).unsqueeze(0)  # (W-, H-)
 
-        # Normalize dsm to range 0-1
+        # Normalize dsm to the highest point in the dataset
         dsmin = dsm.min()
         dsm = dsm - dsmin
-
-        dsmax = dsm.max()
-        dsm = dsm / dsmax
+        dsm = dsm / self.training_max
 
         # Sub-tile from data
         if self.tile_size is not None:
@@ -102,7 +95,7 @@ class DSMShadeDataset(Dataset):
         sun_maps = sun_feat.view(sun_shape, 1, 1).expand(sun_shape, H, W)  # (4, H, W)
         x = torch.cat([dsm, sun_maps], dim=0)  # (1 + 4, H, W)
 
-        # Todo: do we want transforms?
+        # Transforms optional
         if self.transforms is not None:
             x, shade = self.transforms(x, shade)
 

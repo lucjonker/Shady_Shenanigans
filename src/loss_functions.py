@@ -55,5 +55,5 @@ def discriminator_loss(discriminator_real, discriminator_generated):
     fake_class = torch.zeros_like(discriminator_generated, device=discriminator_generated.device)
     fake_loss = bce_loss(discriminator_generated, fake_class)
 
-    total_loss = (real_loss + fake_loss) * 0.5
+    total_loss = (real_loss + fake_loss)
     return total_loss
