@@ -1,22 +1,28 @@
 import torch
 from torch import nn
 from torchmetrics.image import StructuralSimilarityIndexMeasure
+from torchmetrics import MeanSquaredError
 
 
 # Loss definitions inspired by https://github.com/uic-evl/deep-umbra/blob/main/deep_shadow.py
 def l1_loss(y_true, y_pred):
     loss = nn.L1Loss()
-    return loss(y_true, y_pred)
+    return loss(y_pred, y_true)
 
 
 def bce_loss(y_true, y_pred):
     loss = nn.BCELoss()
-    return loss(y_true, y_pred)
+    return loss(y_pred, y_true)
 
 
 def ssim(y_true, y_pred):
     ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(y_pred.device)
     return ssim(y_pred, y_true)
+
+def rmse(y_true, y_pred):
+    mse = MeanSquaredError().to(y_pred.device)
+    mse = mse(y_pred, y_true)
+    return torch.sqrt(mse)
 
 
 def ssim_loss(y_true, y_pred):

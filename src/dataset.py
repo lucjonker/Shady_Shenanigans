@@ -102,9 +102,4 @@ class DSMShadeDataset(Dataset):
         return {
             "source": x,  # DSM + sun channels
             "target": shade,  # shade map
-            # Todo: testing metadata, remove if not used
-            # "sun_feat": sun_feat,
-            # "dsm_id": row['dsm'],
-            # "shade_id": row['shade_map'],
-            # "subtile": idx % (self.sub_tiles_x * self.sub_tiles_y)
         }

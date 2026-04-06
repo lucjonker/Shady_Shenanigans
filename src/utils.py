@@ -104,9 +104,7 @@ def write_dataset_csv(data_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHAD
                 # Get localized, daylight savings aware timezone
                 tile_date = get_regex_group(match, 'date')
                 dt = datetime.strptime(tile_date, '%Y%m%d_%H%M')
-                tz = tf.timezone_at(lng=lon, lat=lat)
-                a = pytz.timezone(tz)
-                time = a.localize(dt, is_dst=False)
+                time = get_tz_aware_dt(lat, lon, dt, tf)
 
                 # Calculate solar angles
                 zenith = get_altitude(lat, lon, time)
@@ -127,6 +125,13 @@ def write_dataset_csv(data_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHAD
             print(f"Skipped {num_skipped} due to zenith < 15 degrees")
 
     df_to_csv(csv_path, "dataset.csv", d)
+
+
+def get_tz_aware_dt(lat: float, lon: float, dt, tf: TimezoneFinder) -> datetime:
+    tz = tf.timezone_at(lng=lon, lat=lat)
+    a = pytz.timezone(tz)
+    time = a.localize(dt, is_dst=False)
+    return time
 
 
 def df_to_csv(csv_root: str, csv_name: str, d: dict):
