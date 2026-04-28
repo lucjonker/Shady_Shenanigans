@@ -10,7 +10,7 @@ def l1_loss(y_true, y_pred):
     return loss(y_pred, y_true)
 
 
-def bce_loss(y_true, y_pred):
+def bce_loss(y_pred, y_true):
     loss = nn.BCELoss()
     return loss(y_pred, y_true)
 
