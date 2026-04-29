@@ -28,7 +28,7 @@ class DSMShadeDataset(Dataset):
         self.training_max = np.max(self.df['maximum'])
         self.transforms = transforms
 
-        self.dsm_cache = {}
+        self.input_cache = {}
         self.shade_cache = {}
         self.max_cache = max_cache
 
@@ -55,22 +55,28 @@ class DSMShadeDataset(Dataset):
         root = f"{self.data_path}/{row['osmid']}"
         dsm_path = f"{root}/input/{row['dsm']}"
         shade_path = f"{root}/targets/{row['tile']}/{row['shade_map']}"
+        mask_path = f"{root}/masks/{row['mask']}"
 
-        dsm_arr = self.read_raster_data(dsm_path, self.dsm_cache)  # (W, H)
+        dsm_arr = self.read_raster_data(dsm_path, self.input_cache)  # (W, H)
+        mask_arr = self.read_raster_data(mask_path, self.input_cache) # (W, H)
         shade_arr = self.read_raster_data(shade_path, self.shade_cache)  # (W-, H-)
         cropto = shade_arr.shape
 
-        # center-crop DSM to shade size
+        # center-crop DSM and mask to shade size
         dsm_arr = center_crop_to(dsm_arr, cropto[0], cropto[1])  # (W-, H-)
+        mask_arr = center_crop_to(mask_arr, cropto[0], cropto[1])  # (W-, H-)
 
         # to tensors with channel dim
         dsm = torch.from_numpy(dsm_arr).unsqueeze(0)  # (W-, H-)
         shade = torch.from_numpy(shade_arr).unsqueeze(0)  # (W-, H-)
+        mask = torch.from_numpy(mask_arr).unsqueeze(0) # (W-, H-)
 
         # Normalize dsm to the highest point in the dataset
         dsmin = dsm.min()
         dsm = dsm - dsmin
         dsm = dsm / self.training_max
+
+        mask = mask / mask.max() # Normalize to [0,1] instead of [0,255]
 
         # Sub-tile from data
         if self.tile_size is not None:
@@ -83,8 +89,8 @@ class DSMShadeDataset(Dataset):
             x0, y0 = get_tile_coordinates(H, W, int(column_offset * offset), int(row_offset * offset), self.tile_size)
 
             dsm = dsm[:, y0:y0 + self.tile_size, x0:x0 + self.tile_size]
+            mask = mask[:, y0:y0 + self.tile_size, x0:x0 + self.tile_size]
             shade = shade[:, y0:y0 + self.tile_size, x0:x0 + self.tile_size]
-            # print(x0, y0, dsm.shape)
 
         # sun features from datetime
         sun_feat = compute_sun_features(row["zenith"], row["azimuth"])  # (4,)
@@ -93,13 +99,13 @@ class DSMShadeDataset(Dataset):
         sun_shape = sun_feat.shape[0]
         _, H, W = dsm.shape
         sun_maps = sun_feat.view(sun_shape, 1, 1).expand(sun_shape, H, W)  # (4, H, W)
-        x = torch.cat([dsm, sun_maps], dim=0)  # (1 + 4, H, W)
+        x = torch.cat([dsm, mask, sun_maps], dim=0)  # (1 + 1 + 4, H, W)
 
         # Transforms optional
         if self.transforms is not None:
             x, shade = self.transforms(x, shade)
 
         return {
-            "source": x,  # DSM + sun channels
+            "source": x,  # DSM + vegetation mask + sun channels
             "target": shade,  # shade map
         }

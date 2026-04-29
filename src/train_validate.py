@@ -23,8 +23,8 @@ from lightning.fabric.utilities import AttributeDict
 
 TEST_DATA_PATH = "../../training_data/"
 CSV_PATH = "../resources/dataset.csv"
-CHECKPOINT_PATH = "../results/checkpoint.ckpt"
-SAVE_FREQUENCY = 5
+CHECKPOINT_PATH = "../results/"
+SAVE_FREQUENCY = 10
 
 
 # https://reit.pages.ewi.tudelft.nl/course-scalable-ai-101-on-daic/075-handson-pytorch-to-fabric.html
@@ -83,10 +83,10 @@ def train(args):
     state = AttributeDict(generator=generator, discriminator=discriminator, gen_optimizer=gen_optimizer,
                           disc_optimizer=disc_optimizer, epoch=epoch, train_height_max=dataset.training_max)
     # If we have a checkpoint
-    my_file = Path(CHECKPOINT_PATH)
+    my_file = Path(CHECKPOINT_PATH + "checkpoint.ckpt")
     if my_file.is_file():
         fabric.print("Loading checkpoint")
-        fabric.load(CHECKPOINT_PATH, state)
+        fabric.load(CHECKPOINT_PATH + "checkpoint.ckpt", state)
         epoch = state.epoch
 
     start_time = time.time()
@@ -161,7 +161,7 @@ def train(args):
         if (epoch + 1) % SAVE_FREQUENCY == 0:
             fabric.print(f"Checkpoint epoch {epoch}")
             # Automatically runs on rank 0
-            fabric.save(CHECKPOINT_PATH, state)
+            fabric.save(CHECKPOINT_PATH + f"checkpoint_{epoch}.ckpt", state)
 
         print(f"[Rank {fabric.global_rank}] finished epoch {epoch}")
 
