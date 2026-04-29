@@ -5,7 +5,7 @@
 
 #SBATCH --qos=short  # Request Quality of Service. Default is 'short' (maximum run time: 4 hours)
 
-#SBATCH --time=0:10:00
+#SBATCH --time=0:03:00
 #SBATCH --nodes=1                        # This needs to match Fabric(num_nodes=...)
 #SBATCH --ntasks-per-node=1              # This needs to match Fabric(devices=...)
 #SBATCH --cpus-per-task=2
@@ -28,7 +28,6 @@ echo "Hostname: `hostname`"
 
 # Run script
 srun apptainer exec \
-    --nv \
     -B /tudelft.net/:/tudelft.net/ \
     $APPTAINER_IMAGE \
     python main.py

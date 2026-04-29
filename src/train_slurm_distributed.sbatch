@@ -3,15 +3,16 @@
 #SBATCH --account=bk-ur-uds
 #SBATCH --partition=general
 
-#SBATCH --qos=short  # Request Quality of Service. Default is 'short' (maximum run time: 4 hours)
+#SBATCH --qos=long  # Request Quality of Service
 
-#SBATCH --time=4:00:00
+#SBATCH --time=6-00:00:00
 #SBATCH --nodes=1                        # This needs to match Fabric(num_nodes=...)
 #SBATCH --ntasks-per-node=3              # This needs to match Fabric(devices=...)
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:3
 #SBATCH --constraint=gpumem32   # Restrict to GPUs with ≥32 GB VRAM
-#SBATCH --mem-per-cpu=4G
+#SBATCH --exclude=cor1
+#SBATCH --mem-per-cpu=8G
 #SBATCH --mail-type=END     # Set mail type to 'END' to receive a mail when the job finishes.
 #SBATCH --output=logs/slurm_%x_%j.out
 #SBATCH --error=logs/slurm_%x_%j.err
@@ -39,12 +40,12 @@ nvidia-smi
 
 # Start GPU monitoring in the background
 GPU_USAGE_FILE="logs/gpu-usage-${SLURM_JOB_ID}.csv"
-nvidia-smi --query-gpu=timestamp,index,utilization.gpu,utilization.memory,memory.used,memory.total --format=csv -l 60 > $GPU_USAGE_FILE &
+nvidia-smi --query-gpu=timestamp,index,utilization.gpu,utilization.memory,memory.used,memory.total --format=csv -l 600 > $GPU_USAGE_FILE &
 GPU_MONITOR_PID=$!
 
 # Prevents direct GPU-to-GPU communication in NVIDIA's collective communications library
 # Forcing data to flow through the CPU instead.
-# export NCCL_P2P_DISABLE=1
+#export NCCL_P2P_DISABLE=1
 
 # Run script
 srun apptainer exec \

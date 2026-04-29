@@ -87,6 +87,7 @@ def train(args):
     if my_file.is_file():
         fabric.print("Loading checkpoint")
         fabric.load(CHECKPOINT_PATH, state)
+        epoch = state.epoch
 
     start_time = time.time()
     fabric.print("Beginning Training...")
@@ -182,7 +183,7 @@ def run():
     parser = argparse.ArgumentParser(description="Train a Shade raster prediction model")
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation')
     parser.add_argument('--workers', type=int, default=2, help='Number of workers for DataLoader')
-    parser.add_argument('--epochs', type=int, default=20, help='Number of epochs for training')
+    parser.add_argument('--epochs', type=int, default=100, help='Number of epochs for training')
     parser.add_argument('--learning_rate', type=float, default=0.0002, help='Initial learning rate')
     parser.add_argument('--validation_split', type=float, default=.2, help='Ratio of training data for validation')
     parser.add_argument('--momentum', type=float, default=0.5, help='Optimizer momentum')
