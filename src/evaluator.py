@@ -124,7 +124,7 @@ class ShadeEvaluator:
 
             return profile, res, zenith, runtime
 
-    def generate_and_write_output(self, dsm_path, unaware_date_time, overlap, strategy="max", filename="result",
+    def generate_and_write_output(self, dsm_path, unaware_date_time, overlap, strategy="stitch", filename="result",
                                   crop=False):
         tf = TimezoneFinder(in_memory=True)
         profile, res, _, _ = self.generate_output(dsm_path, unaware_date_time, overlap, strategy, crop, tf)
@@ -134,7 +134,7 @@ class ShadeEvaluator:
             dst.write(res, 1)
 
     def write_metrics_csv(self, data_path, csv_path, filename="metrics", dsm_regex=DSM_REGEX, shade_regex=SHADE_REGEX,
-                          overlap=0, strategy="max"):
+                          overlap=0, strategy="stitch"):
         d = {'osmid': [], 'tile': [], 'date_time': [], 'RMSE': [], 'SSIM': [], 'MAE': [], 'runtime': []}
         tf = TimezoneFinder(in_memory=True)
         # For each cities' data
