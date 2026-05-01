@@ -33,70 +33,71 @@ class ShadeEvaluator:
         self.training_max = state.train_height_max
         print("Model initialized...")
 
-    def generate_output(self, dsm_path, unaware_date_time, overlap, strategy, crop, tf, measure_runtime=False):
+    def generate_output(self, dsm_path, tree_mask_path, unaware_date_time, overlap, strategy, crop, tf, measure_runtime=False):
         tile_size = 512
         stride = tile_size - (overlap * 2)
 
-        with rasterio.open(dsm_path) as src:
-            lat, lon = get_lat_lon(src)
-            date_time = get_tz_aware_dt(lat, lon, unaware_date_time, tf)
+        with rasterio.open(dsm_path) as dsm_src:
+            with rasterio.open(tree_mask_path) as tree_mask:
+                lat, lon = get_lat_lon(dsm_src)
+                date_time = get_tz_aware_dt(lat, lon, unaware_date_time, tf)
 
-            # Calculate solar angles
-            zenith = get_altitude(lat, lon, date_time)
-            azimuth = get_azimuth(lat, lon, date_time)
+                # Calculate solar angles
+                zenith = get_altitude(lat, lon, date_time)
+                azimuth = get_azimuth(lat, lon, date_time)
 
-            if zenith <= 15:
-                return None, None, None, None
+                if zenith <= 15:
+                    return None, None, None, None
 
-            H, W = src.height, src.width
-            profile = src.profile.copy()
-            profile.update(dtype=rasterio.float32, count=1)
+                H, W = dsm_src.height, dsm_src.width
+                profile = dsm_src.profile.copy()
+                profile.update(dtype=rasterio.float32, count=1)
 
-            out_max = None
-            out_acc = None
-            out_hits = None
-            if strategy == "max":
-                out_max = np.full((H, W), -np.inf, dtype=np.float32)
-            if strategy == "mean":
-                out_acc = np.zeros((H, W), dtype=np.float32)
-                out_hits = np.zeros((H, W), dtype=np.float32)
-            if strategy == "stitch":
-                out_acc = np.zeros((H, W), dtype=np.float32)
+                out_max = None
+                out_acc = None
+                out_hits = None
+                if strategy == "max":
+                    out_max = np.full((H, W), -np.inf, dtype=np.float32)
+                if strategy == "mean":
+                    out_acc = np.zeros((H, W), dtype=np.float32)
+                    out_hits = np.zeros((H, W), dtype=np.float32)
+                if strategy == "stitch":
+                    out_acc = np.zeros((H, W), dtype=np.float32)
 
-            # Iterating over input image
-            if measure_runtime:
-                start_time = time.time()
+                # Iterating over input image
+                if measure_runtime:
+                    start_time = time.time()
 
-            for row in range(0, H, stride):
-                for col in range(0, W, stride):
-                    # Prep tile
-                    x, x0, y0 = self.prepare_tile(H, W, azimuth, col, row, src, tile_size, zenith)
+                for row in range(0, H, stride):
+                    for col in range(0, W, stride):
+                        # Prep tile
+                        x, x0, y0 = self.prepare_tile(H, W, azimuth, col, row, dsm_src, tree_mask, tile_size, zenith)
 
-                    # Perform prediction
-                    with torch.no_grad():
-                        x = x.to(self.device)
-                        pred = self.generator(x)
+                        # Perform prediction
+                        with torch.no_grad():
+                            x = x.to(self.device)
+                            pred = self.generator(x)
 
-                    # Removing batch dimension
-                    pred = pred.squeeze(0)
+                        # Removing batch dimension
+                        pred = pred.squeeze(0)
 
-                    pred_np = pred.detach().cpu().numpy().astype(np.float32).squeeze(0)
+                        pred_np = pred.detach().cpu().numpy().astype(np.float32).squeeze(0)
 
-                    # Take max of predicted values
-                    if strategy == "max":
-                        patch = out_max[y0:y0 + tile_size, x0:x0 + tile_size]
-                        out_max[y0:y0 + tile_size, x0:x0 + tile_size] = np.maximum(patch, pred_np)
-                    if strategy == "mean":
-                        out_acc[y0:y0 + tile_size, x0:x0 + tile_size] += pred_np
-                        out_hits[y0:y0 + tile_size, x0:x0 + tile_size] += float(1.0)
-                    if strategy == "stitch":
-                        row_start = (y0 + overlap if y0 > 0 else y0)
-                        row_end = (y0 + tile_size - overlap if y0 + tile_size < H else H)
-                        col_start = (x0 + overlap if x0 > 0 else x0)
-                        col_end = (x0 + tile_size - overlap if x0 + tile_size < W else W)
-                        out_acc[row_start:row_end, col_start:col_end] = pred_np[
-                            (overlap if y0 > 0 else 0):(tile_size - overlap if y0 + tile_size < H else tile_size),
-                            (overlap if x0 > 0 else 0):(tile_size - overlap if x0 + tile_size < W else tile_size)]
+                        # Take max of predicted values
+                        if strategy == "max":
+                            patch = out_max[y0:y0 + tile_size, x0:x0 + tile_size]
+                            out_max[y0:y0 + tile_size, x0:x0 + tile_size] = np.maximum(patch, pred_np)
+                        if strategy == "mean":
+                            out_acc[y0:y0 + tile_size, x0:x0 + tile_size] += pred_np
+                            out_hits[y0:y0 + tile_size, x0:x0 + tile_size] += float(1.0)
+                        if strategy == "stitch":
+                            row_start = (y0 + overlap if y0 > 0 else y0)
+                            row_end = (y0 + tile_size - overlap if y0 + tile_size < H else H)
+                            col_start = (x0 + overlap if x0 > 0 else x0)
+                            col_end = (x0 + tile_size - overlap if x0 + tile_size < W else W)
+                            out_acc[row_start:row_end, col_start:col_end] = pred_np[
+                                (overlap if y0 > 0 else 0):(tile_size - overlap if y0 + tile_size < H else tile_size),
+                                (overlap if x0 > 0 else 0):(tile_size - overlap if x0 + tile_size < W else tile_size)]
 
             runtime = None
             if measure_runtime:
@@ -116,7 +117,7 @@ class ShadeEvaluator:
                 xsize, ysize = W - 100, H - 100
                 xoff, yoff = 50, 50
                 window = Window(xoff, yoff, xsize, ysize)
-                window_transform = src.window_transform(window)
+                window_transform = dsm_src.window_transform(window)
                 profile.update({
                     'height': ysize,
                     'width': xsize,
@@ -124,10 +125,10 @@ class ShadeEvaluator:
 
             return profile, res, zenith, runtime
 
-    def generate_and_write_output(self, dsm_path, unaware_date_time, overlap, strategy="stitch", filename="result",
+    def generate_and_write_output(self, dsm_path, tree_mask_path, unaware_date_time, overlap, strategy="stitch", filename="result",
                                   crop=False):
         tf = TimezoneFinder(in_memory=True)
-        profile, res, _, _ = self.generate_output(dsm_path, unaware_date_time, overlap, strategy, crop, tf)
+        profile, res, _, _ = self.generate_output(dsm_path, tree_mask_path, unaware_date_time, overlap, strategy, crop, tf)
         # Write out
         result_path = self.results_dir + f"/{filename}.tif"
         with rasterio.open(result_path, "w", **profile) as dst:
@@ -197,14 +198,16 @@ class ShadeEvaluator:
 
         df_to_csv(csv_path, f"{filename}.csv", d)
 
-    def prepare_tile(self, H, W, azimuth: float, col: int, row: int, src, tile_size: int, zenith: float):
+    def prepare_tile(self, H, W, azimuth: float, col: int, row: int, dsm_src, tree_mask, tile_size: int, zenith: float):
         x0, y0 = get_tile_coordinates(H, W, col, row, tile_size)
 
         # Read window
         window = Window(col_off=x0, row_off=y0, width=tile_size, height=tile_size)
-        tile = src.read(window=window)
+        d_tile = dsm_src.read(window=window)
+        t_tile = tree_mask.read(window=window)
 
-        dsm = torch.from_numpy(tile.astype(np.float32))
+        dsm = torch.from_numpy(d_tile.astype(np.float32))
+        mask = torch.from_numpy(t_tile.astype(np.float32))
 
         # Normalize dsm to the highest point in the training dataset (so that input is still correct relative to what model understands)
         # Todo: does this cause problems if the dsm contains a higher max value than the model has seen?
@@ -213,11 +216,13 @@ class ShadeEvaluator:
         dsm = dsm - dsmin
         dsm = dsm / self.training_max
 
+        mask = mask / mask.max()  # Normalize to [0,1] instead of [0,255]
+
         sun_feat = compute_sun_features(zenith, azimuth)  # (4,)
 
         # broadcast to constant maps and concatenate with DSM
         sun_shape = sun_feat.shape[0]
         sun_maps = sun_feat.view(sun_shape, 1, 1).expand(sun_shape, tile_size, tile_size)  # (4, H, W)
-        x = torch.cat([dsm, sun_maps], dim=0)  # (1 + 4, H, W)
+        x = torch.cat([dsm, mask, sun_maps], dim=0)  # (1 + 4, H, W)
         x = x.unsqueeze(0)  # (1, 1 + 4, H, W)
         return x, x0, y0
