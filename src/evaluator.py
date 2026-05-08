@@ -33,7 +33,10 @@ class ShadeEvaluator:
         self.training_max = state.train_height_max
         print("Model initialized...")
 
-    def generate_output(self, dsm_path, tree_mask_path, unaware_date_time, overlap, strategy, crop, tf, measure_runtime=False):
+    # Given a dsm, tree mask, and desired date + time, generates model output and combines with a given overlap and strategy
+    # Note: strategies max and mean are not recommended for use
+    def generate_output(self, dsm_path, tree_mask_path, unaware_date_time, overlap, strategy, crop, tf,
+                        measure_runtime=False, building_only=False):
         tile_size = 512
         stride = tile_size - (overlap * 2)
 
@@ -71,7 +74,8 @@ class ShadeEvaluator:
                 for row in range(0, H, stride):
                     for col in range(0, W, stride):
                         # Prep tile
-                        x, x0, y0 = self.prepare_tile(H, W, azimuth, col, row, dsm_src, tree_mask, tile_size, zenith)
+                        x, x0, y0 = self.prepare_tile(H, W, azimuth, col, row, dsm_src, tree_mask, tile_size, zenith,
+                                                      building_only)
 
                         # Perform prediction
                         with torch.no_grad():
@@ -125,17 +129,18 @@ class ShadeEvaluator:
 
             return profile, res, zenith, runtime
 
-    def generate_and_write_output(self, dsm_path, tree_mask_path, unaware_date_time, overlap, strategy="stitch", filename="result",
-                                  crop=False):
+    def generate_and_write_output(self, dsm_path, tree_mask_path, unaware_date_time, overlap, strategy="stitch",
+                                  filename="result", crop=False):
         tf = TimezoneFinder(in_memory=True)
-        profile, res, _, _ = self.generate_output(dsm_path, tree_mask_path, unaware_date_time, overlap, strategy, crop, tf)
+        profile, res, _, _ = self.generate_output(dsm_path, tree_mask_path, unaware_date_time, overlap, strategy, crop,
+                                                  tf)
         # Write out
         result_path = self.results_dir + f"/{filename}.tif"
         with rasterio.open(result_path, "w", **profile) as dst:
             dst.write(res, 1)
 
     def write_metrics_csv(self, data_path, csv_path, filename="metrics", dsm_regex=DSM_REGEX, shade_regex=SHADE_REGEX,
-                          overlap=0, strategy="stitch"):
+                          overlap=0, strategy="stitch", building_only=False):
         d = {'osmid': [], 'tile': [], 'date_time': [], 'RMSE': [], 'SSIM': [], 'MAE': [], 'runtime': []}
         tf = TimezoneFinder(in_memory=True)
         # For each cities' data
@@ -153,6 +158,9 @@ class ShadeEvaluator:
                 dsm_osmid = get_regex_group(match, 'osmid')
                 dsm_tile_num = get_regex_group(match, 'tile')
                 dsm_path = f"{data_path}{city_filename}/input/{dsm_filename}"
+                dsm_date = get_regex_group(match, 'date')
+
+                mask_path = f"{data_path}{city_filename}/masks/{dsm_osmid}_p_{dsm_tile_num}_{dsm_date}_rgb_segmented.tif"
 
                 print(f"Writing for tile: {dsm_tile_num}...")
                 num_skipped = 0
@@ -166,9 +174,8 @@ class ShadeEvaluator:
                     # Get timezone
                     tile_date = get_regex_group(match, 'date')
                     unaware_date_time = datetime.strptime(tile_date, '%Y%m%d_%H%M')
-                    _, res, zenith, runtime = self.generate_output(dsm_path, unaware_date_time, overlap, strategy, True,
-                                                                   tf,
-                                                                   True)
+                    profile, res, zenith, runtime = self.generate_output(dsm_path, mask_path, unaware_date_time,
+                                                                         overlap, strategy, not building_only, tf, True)
 
                     # Skipped if zenith is < 15 degrees
                     if zenith is not None:
@@ -198,7 +205,59 @@ class ShadeEvaluator:
 
         df_to_csv(csv_path, f"{filename}.csv", d)
 
-    def prepare_tile(self, H, W, azimuth: float, col: int, row: int, dsm_src, tree_mask, tile_size: int, zenith: float):
+    def generate_outputs(self, data_path, dsm_regex=DSM_REGEX, shade_regex=SHADE_REGEX, overlap=64, strategy="stitch",
+                         building_only=False):
+        tf = TimezoneFinder(in_memory=True)
+        # For each cities' data
+        for city_filename in os.listdir(data_path):
+            # Skip mac ds store
+            if city_filename == ".DS_Store":
+                continue
+            print(f"Processing city with osmid: {city_filename}")
+            # For each dsm within the city
+            for dsm_filename in os.listdir(f"{data_path}{city_filename}/input"):
+                match = re.search(dsm_regex, dsm_filename)
+                if not match:
+                    continue
+
+                dsm_osmid = get_regex_group(match, 'osmid')
+                dsm_tile_num = get_regex_group(match, 'tile')
+                dsm_path = f"{data_path}{city_filename}/input/{dsm_filename}"
+                dsm_date = get_regex_group(match, 'date')
+
+                mask_path = f"{data_path}{city_filename}/masks/{dsm_osmid}_p_{dsm_tile_num}_{dsm_date}_rgb_segmented.tif"
+
+                print(f"Writing for tile: {dsm_tile_num}...")
+                num_skipped = 0
+                # For each shade map corresponding to the same tile
+                for shade_filename in os.listdir(f"{data_path}{city_filename}/targets/{dsm_tile_num}"):
+                    match = re.search(shade_regex, shade_filename)
+                    if not match:
+                        continue
+
+                    # Get timezone
+                    tile_date = get_regex_group(match, 'date')
+                    unaware_date_time = datetime.strptime(tile_date, '%Y%m%d_%H%M')
+                    profile, res, zenith, runtime = self.generate_output(dsm_path, mask_path, unaware_date_time,
+                                                                         overlap, strategy, not building_only, tf,
+                                                                         building_only)
+
+                    # Skipped if zenith is < 15 degrees
+                    if zenith is not None:
+                        result_dir = self.results_dir + f"/{dsm_tile_num}"
+                        if not os.path.exists(result_dir):
+                            # Create the directory
+                            os.makedirs(result_dir)
+                        result_path = result_dir + f"/{dsm_osmid}_p_{dsm_tile_num}_{tile_date}_model.tif"
+                        with rasterio.open(result_path, "w", **profile) as dst:
+                            dst.write(res, 1)
+                    else:
+                        num_skipped += 1
+
+                print(f"Skipped {num_skipped} due to zenith < 15 degrees")
+
+    def prepare_tile(self, H, W, azimuth: float, col: int, row: int, dsm_src, tree_mask, tile_size: int, zenith: float,
+                     building_only: bool):
         x0, y0 = get_tile_coordinates(H, W, col, row, tile_size)
 
         # Read window
@@ -208,6 +267,8 @@ class ShadeEvaluator:
 
         dsm = torch.from_numpy(d_tile.astype(np.float32))
         mask = torch.from_numpy(t_tile.astype(np.float32))
+        if building_only:
+            mask = np.zeros_like(mask, dtype=np.float32)
 
         # Normalize dsm to the highest point in the training dataset (so that input is still correct relative to what model understands)
         # Todo: does this cause problems if the dsm contains a higher max value than the model has seen?
@@ -216,7 +277,8 @@ class ShadeEvaluator:
         dsm = dsm - dsmin
         dsm = dsm / self.training_max
 
-        mask = mask / mask.max()  # Normalize to [0,1] instead of [0,255]
+        if not building_only:
+            mask = mask / mask.max()  # Normalize to [0,1] instead of [0,255]
 
         sun_feat = compute_sun_features(zenith, azimuth)  # (4,)
 
