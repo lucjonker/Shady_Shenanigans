@@ -1,18 +1,18 @@
 import numpy as np
 import rasterio
+import pandas as pd
 from matplotlib import pyplot as plt
 
+import seaborn as sns
+sns.set_theme()
+sns.set_context("paper")
 
-def plot_losses(g_losses, d_losses, title="Loss Analysis:"):
-    plt.figure(figsize=(10, 5))
-    plt.suptitle(title, fontsize=16)
-
-    plt.plot(range(1, len(g_losses) + 1), g_losses, label="Generator Loss")
-    plt.plot(range(1, len(d_losses) + 1), d_losses, label="Discriminator Loss")
+def plot_losses(g_train, d_train, g_val, d_val):
+    sns.relplot(
+        data=(g_train, d_train, g_val, d_val), kind="line", palette="colorblind", aspect=1.5
+    )
     plt.xlabel("Epochs")
     plt.ylabel("Loss")
-    plt.title("Generator and Discriminator Loss Over Epochs")
-    plt.legend()
     plt.show()
 
 
