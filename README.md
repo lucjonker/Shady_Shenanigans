@@ -120,3 +120,11 @@ The notebook [evaluate_model.ipynb](src/evaluate_model.ipynb) showcases the func
 - Generating _new_ shade predictions
 - Visualizing loss curves of the model training
 - Generating a model performance metrics CSV that derives RMSE, MAE, SSIM, and runtime metrics.  
+
+## Case Study
+
+The case study was performed on data generated using a slightly modified version of [Slim Shady](https://github.com/lukasbeuster/slim_shady), the code can be found [here](https://github.com/lucjonker/slim_shady_shenanigans).
+
+## License
+
+[MIT](LICENSE)
