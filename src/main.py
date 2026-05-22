@@ -1,7 +1,7 @@
 import os
 from utils import write_dataset_csv
 
-# Define resources for training todo modify to daic
+# Define resources for training
 TEST_DATA_PATH = "/Volumes/UDSstorage/msc_ljonker/training_data"
 CSV_PATH = "/tudelft.net/staff-umbrella/UDSstorage/msc_ljonker/ShadyShenanigans/resources/"
 

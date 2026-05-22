@@ -1,43 +1,49 @@
+import numpy as np
+import rasterio
+import pandas as pd
 from matplotlib import pyplot as plt
 
+import seaborn as sns
+sns.set_theme()
+sns.set_context("paper")
 
-def plot_losses(g_losses, d_losses, title="Loss Analysis:"):
-    plt.figure(figsize=(10, 5))
-    plt.suptitle(title, fontsize=16)
-
-    plt.plot(range(1, len(g_losses) + 1), g_losses, label="Generator Loss")
-    plt.plot(range(1, len(d_losses) + 1), d_losses, label="Discriminator Loss")
+def plot_losses(g_train, d_train, g_val, d_val):
+    sns.relplot(
+        data=(g_train, d_train, g_val, d_val), kind="line", palette="colorblind", aspect=1.5
+    )
     plt.xlabel("Epochs")
     plt.ylabel("Loss")
-    plt.title("Generator and Discriminator Loss Over Epochs")
-    plt.legend()
     plt.show()
 
 
-# Plots result and target images assuming they come from the gpu
-def display_res(source, result, target):
-    source_cpu = source.cpu()
-    result_cpu = result.cpu().detach()
-    target_cpu = target.cpu().detach()
+# Plots result and target images
+def display_res(source, generated, target):
+    source = load_raster(source)
+    generated = load_raster(generated)
+    target = load_raster(target)
 
     plt.figure(figsize=(16, 6))
     ax1 = plt.subplot(1, 3, 1)
-    result = source_cpu[0][0]
-    plt.imshow(result.numpy())
+    plt.imshow(source)
     ax1.title.set_text("Source")
     plt.axis('off')
 
     ax2 = plt.subplot(1, 3, 2)
-    result = result_cpu[0]
-    plt.imshow(result.squeeze().numpy())
+    plt.imshow(generated)
     ax2.title.set_text("Model Result")
     plt.axis('off')
 
     ax3 = plt.subplot(1, 3, 3)
-    result = target_cpu[0]
-    plt.imshow(result.squeeze().numpy())
+    plt.imshow(target)
     ax3.title.set_text("Target Result")
     plt.axis('off')
 
     plt.set_cmap("viridis")
     plt.show()
+
+
+def load_raster(source):
+    with rasterio.open(source) as src:
+        arr = src.read(1)  # (H, W)
+    source = arr.astype(np.float32)
+    return source

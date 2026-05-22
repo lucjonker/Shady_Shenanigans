@@ -35,7 +35,7 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
 
         # Encoder (DownSampling)
-        self.down1 = DownSample(5, 64, apply_batchnorm=False)  # C64
+        self.down1 = DownSample(6, 64, apply_batchnorm=False)  # C64
         self.down2 = DownSample(64, 128)  # C128
         self.down3 = DownSample(128, 256)  # C256
         self.down4 = DownSample(256, 512)  # C512
@@ -61,7 +61,7 @@ class Generator(nn.Module):
         )
 
     def forward(self, x):
-        # Encoder forward      (batch_size, 5, 512, 512)
+        # Encoder forward      (batch_size, 6, 512, 512)
         d1 = self.down1(x)  # (batch_size, 64, 256, 256)
         d2 = self.down2(d1)  # (batch_size, 128, 128, 128)
         d3 = self.down3(d2)  # (batch_size, 256, 64, 64)
@@ -126,8 +126,8 @@ class UpSample(nn.Module):
 
 class Discriminator(nn.Module):
 
-    # in channels is channels of source + either real or generated image, so 5 for input and 1 for output
-    def __init__(self, in_channels=6):
+    # in channels is channels of source + either real or generated image, so 6 for input and 1 for output
+    def __init__(self, in_channels=7):
         super(Discriminator, self).__init__()
 
         def conv_block(in_c, out_c, stride):
