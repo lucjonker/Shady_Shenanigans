@@ -75,7 +75,7 @@ def get_tile_coordinates(H, W, col: int, row: int, tile_size: int) -> tuple[int,
 
 
 def write_dataset_csv(data_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHADE_REGEX):
-    d = {'osmid': [], 'tile': [], 'mask': [], 'dsm': [], 'shade_map': [], 'zenith': [], 'azimuth': [], 'maximum': []}
+    d = {'osmid': [], 'tile': [], 'dsm': [], 'shade_map': [], 'zenith': [], 'azimuth': [], 'maximum': []}
     tf = TimezoneFinder(in_memory=True)
     # For each cities' data
     for city_filename in os.listdir(data_path):
@@ -91,10 +91,6 @@ def write_dataset_csv(data_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHAD
 
             dsm_osmid = get_regex_group(match, 'osmid')
             dsm_tile_num = get_regex_group(match, 'tile')
-            dsm_date = get_regex_group(match, 'date')
-
-            mask = f"{dsm_osmid}_p_{dsm_tile_num}_{dsm_date}_rgb_segmented.tif"
-
             # Get latitude, longitude, and normalized maximum value
             lat, lon, maximum = get_raster_data(f"{data_path}{city_filename}/input/{dsm_filename}")
             print(f"Writing for tile: {dsm_tile_num}...")
@@ -119,7 +115,6 @@ def write_dataset_csv(data_path, csv_path, dsm_regex=DSM_REGEX, shade_regex=SHAD
                     d["osmid"].append(dsm_osmid)
                     d['tile'].append(dsm_tile_num)
                     d['dsm'].append(dsm_filename)
-                    d['mask'].append(mask)
                     d['shade_map'].append(shade_filename)
                     d['zenith'].append(zenith)
                     d['azimuth'].append(azimuth)
