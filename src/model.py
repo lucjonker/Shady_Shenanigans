@@ -61,7 +61,7 @@ class Generator(nn.Module):
         )
 
     def forward(self, x):
-        # Encoder forward      (batch_size, 5, 512, 512)
+        # Encoder forward      (batch_size, 6, 512, 512)
         d1 = self.down1(x)  # (batch_size, 64, 256, 256)
         d2 = self.down2(d1)  # (batch_size, 128, 128, 128)
         d3 = self.down3(d2)  # (batch_size, 256, 64, 64)
