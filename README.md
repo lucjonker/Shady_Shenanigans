@@ -86,6 +86,7 @@ The code itself ran in an Apptainer environment, and the [train_slurm_distribute
 
 The model training is defined in [train_validate.py](src/train_validate.py).
 It assumes that the code is running on the AI cluster, and thus expects an environment with multiple CUDA GPUs.
+If you are not running on such an environment, simply modify the `fabric.launch` command on line 35 to fit the specifications of the system that you are using.
 
 The file can be run in the terminal using Python:
 ```
